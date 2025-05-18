@@ -19,6 +19,7 @@
     "@reduxjs/toolkit": "^1.9.7",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
+    "crypto-browserify": "^3.12.1",
     "ethers": "^6.8.1",
     "graphql": "^16.8.1",
     "inversify": "^6.0.2",

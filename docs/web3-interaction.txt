@@ -1,0 +1,57 @@
+class Web3Interaction {
+  constructor() {
+    this.rpc = new RPCProvider();
+    this.wss = new WebSocketProvider();
+    this.events = new EventEmitter();
+    this.cache = new Web3Cache();
+  }
+
+  async subscribe(options) {
+    const subscription = await this.wss.subscribe(options);
+    this.events.register(subscription);
+    return subscription;
+  }
+
+  async call(method, params) {
+    const cached = await this.cache.get({ method, params });
+    if (cached) return cached;
+
+    const result = await this.rpc.call(method, params);
+    await this.cache.set({ method, params }, result);
+    return result;
+  }
+}
+
+class Web3Provider {
+  constructor() {
+    this.networks = new NetworkManager();
+    this.fallback = new FallbackProvider();
+    this.monitor = new ConnectionMonitor();
+  }
+
+  async connect(networkId) {
+    const providers = await this.networks.getProviders(networkId);
+    const provider = await this.fallback.setup(providers);
+    return this.monitor.watch(provider);
+  }
+}
+
+class Web3State {
+  constructor() {
+    this.store = new StateStore();
+    this.sync = new StateSync();
+    this.validator = new StateValidator();
+  }
+
+  async updateState(update) {
+    const validated = await this.validator.validate(update);
+    await this.store.update(validated);
+    return this.sync.broadcast(validated);
+  }
+}
+
+export default {
+  Web3Interaction,
+  Web3Provider,
+  Web3State
+};

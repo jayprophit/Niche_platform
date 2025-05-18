@@ -1,0 +1,58 @@
+/src
+  /core-business
+    /education
+      - adaptive-learning.js      // Adaptive learning system
+      - progress-tracking.js      // Learning progress tracker
+      - certification-engine.js   // Certification management
+      - assessment-engine.js      // Assessment system
+      - course-builder.js        // Course creation tools
+
+    /marketplace
+      - product-catalog.js       // Product management
+      - order-processing.js      // Order handling
+      - payment-gateway.js       // Payment processing
+      - inventory-manager.js     // Inventory tracking
+      - pricing-engine.js        // Dynamic pricing
+
+    /social
+      - feed-manager.js          // Content feed system
+      - interaction-handler.js    // User interactions
+      - content-moderator.js     // Content moderation
+      - streaming-service.js     // Live streaming
+      - recommendation-engine.js // Content recommendations
+
+    /jobs
+      - job-matching.js          // Job matching system
+      - skill-analyzer.js        // Skill analysis
+      - application-tracker.js   // Application tracking
+      - interview-scheduler.js   // Interview management
+      - career-analytics.js      // Career progression
+
+  /platform-services
+    /ai
+      - ml-trainer.js           // ML model training
+      - inference-engine.js      // Model inference
+      - optimization-service.js  // Model optimization
+      - feature-extractor.js    // Feature extraction
+      - model-registry.js       // Model management
+
+    /blockchain
+      - smart-contract-engine.js // Smart contract system
+      - token-service.js        // Token management
+      - nft-platform.js         // NFT handling
+      - defi-protocols.js       // DeFi features
+      - consensus-manager.js    // Consensus handling
+
+    /security
+      - access-controller.js    // Access control
+      - encryption-service.js   // Encryption handling
+      - audit-logger.js        // Audit logging
+      - threat-detector.js     // Threat detection
+      - compliance-checker.js  // Compliance checking
+
+    /integration
+      - api-gateway.js         // API management
+      - event-bus.js          // Event handling
+      - message-queue.js      // Message queuing
+      - service-mesh.js       // Service communication
+      - data-sync.js         // Data synchronization

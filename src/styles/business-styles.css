@@ -1,0 +1,799 @@
+/**
+ * Business and Organization Account Styling
+ * Provides styling for business profiles, registration forms, and dashboards
+ */
+
+:root {
+  /* Business theme colors */
+  --bb-business-primary: #2563EB;
+  --bb-business-primary-hover: #1D4ED8;
+  --bb-business-secondary: #0F172A;
+  --bb-business-accent: #3B82F6;
+  --bb-business-success: #10B981;
+  --bb-business-warning: #F59E0B;
+  --bb-business-danger: #EF4444;
+  --bb-business-info: #64748B;
+  --bb-business-light: #F1F5F9;
+  --bb-business-dark: #1E293B;
+  --bb-business-border: #E2E8F0;
+  
+  /* Business tier colors */
+  --bb-tier-basic: #64748B;
+  --bb-tier-professional: #3B82F6;
+  --bb-tier-enterprise: #8B5CF6;
+}
+
+/* Business profile styles */
+.bb-business-profile-header {
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  margin-bottom: var(--bb-spacing-xl);
+  overflow: hidden;
+}
+
+.bb-business-cover {
+  height: 300px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bb-business-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bb-business-content {
+  padding: var(--bb-spacing-lg);
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.bb-business-logo {
+  margin-top: -80px;
+  margin-right: var(--bb-spacing-lg);
+  position: relative;
+}
+
+.bb-business-logo img {
+  width: 150px;
+  height: 150px;
+  border-radius: var(--bb-border-radius-md);
+  border: 5px solid var(--bb-background);
+  box-shadow: var(--bb-shadow-sm);
+  object-fit: cover;
+}
+
+.bb-logo-change {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--bb-border-radius-circle);
+  background-color: var(--bb-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+}
+
+.bb-business-details {
+  flex: 1;
+}
+
+.bb-business-badges {
+  display: flex;
+  gap: var(--bb-spacing-sm);
+  margin-bottom: var(--bb-spacing-sm);
+}
+
+.bb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: var(--bb-border-radius-sm);
+  font-size: var(--bb-font-size-xs);
+  font-weight: 500;
+}
+
+.bb-badge-verified {
+  background-color: var(--bb-success);
+  color: white;
+}
+
+.bb-badge-tier {
+  background-color: var(--bb-tier-basic);
+  color: white;
+}
+
+.bb-tier-basic {
+  background-color: var(--bb-tier-basic);
+}
+
+.bb-tier-professional {
+  background-color: var(--bb-tier-professional);
+}
+
+.bb-tier-enterprise {
+  background-color: var(--bb-tier-enterprise);
+}
+
+.bb-business-details h1 {
+  margin-bottom: var(--bb-spacing-xs);
+  font-size: var(--bb-font-size-xxl);
+}
+
+.bb-business-tagline {
+  margin-bottom: var(--bb-spacing-md);
+  color: var(--bb-body-text);
+  font-size: var(--bb-font-size-lg);
+}
+
+.bb-business-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bb-spacing-md);
+  color: var(--bb-alternate-text);
+  font-size: var(--bb-font-size-sm);
+}
+
+.bb-business-actions {
+  display: flex;
+  gap: var(--bb-spacing-sm);
+  margin-left: auto;
+  align-self: flex-start;
+}
+
+.bb-business-navigation {
+  border-top: 1px solid var(--bb-border-color);
+  padding: 0 var(--bb-spacing-lg);
+}
+
+.bb-business-navigation ul {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.bb-business-navigation li {
+  margin-right: var(--bb-spacing-lg);
+}
+
+.bb-business-navigation a {
+  display: block;
+  padding: var(--bb-spacing-md) 0;
+  color: var(--bb-body-text);
+  font-weight: 500;
+  position: relative;
+}
+
+.bb-business-navigation li.active a {
+  color: var(--bb-business-primary);
+}
+
+.bb-business-navigation li.active a:after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: var(--bb-business-primary);
+}
+
+/* Business registration form styles */
+.bb-business-registration {
+  max-width: 900px;
+  margin: 0 auto;
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  padding: var(--bb-spacing-xl);
+}
+
+.bb-business-registration-header {
+  text-align: center;
+  margin-bottom: var(--bb-spacing-xl);
+}
+
+.bb-business-registration-header h2 {
+  font-size: var(--bb-font-size-xxl);
+  margin-bottom: var(--bb-spacing-sm);
+}
+
+.bb-business-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bb-spacing-xl);
+}
+
+.bb-form-section {
+  border-bottom: 1px solid var(--bb-border-color);
+  padding-bottom: var(--bb-spacing-lg);
+}
+
+.bb-form-section h3 {
+  margin-bottom: var(--bb-spacing-md);
+  color: var(--bb-business-secondary);
+}
+
+.bb-form-group {
+  margin-bottom: var(--bb-spacing-md);
+}
+
+.bb-form-row {
+  display: flex;
+  gap: var(--bb-spacing-md);
+  margin-bottom: var(--bb-spacing-md);
+}
+
+.bb-form-row .bb-form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.bb-form-group label {
+  display: block;
+  margin-bottom: var(--bb-spacing-xs);
+  font-weight: 500;
+}
+
+.bb-form-group input,
+.bb-form-group select,
+.bb-form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-sm);
+  font-family: var(--bb-font-family);
+  font-size: var(--bb-font-size-md);
+}
+
+.bb-form-group textarea {
+  resize: vertical;
+}
+
+.bb-form-submit {
+  display: flex;
+  align-items: flex-end;
+}
+
+.bb-plan-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--bb-spacing-md);
+  margin-bottom: var(--bb-spacing-lg);
+}
+
+.bb-plan-card {
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-md);
+  padding: var(--bb-spacing-md);
+  transition: all var(--bb-transition-fast);
+}
+
+.bb-plan-card.selected {
+  border-color: var(--bb-business-primary);
+  box-shadow: var(--bb-shadow-md);
+}
+
+.bb-plan-header {
+  text-align: center;
+  margin-bottom: var(--bb-spacing-md);
+  padding-bottom: var(--bb-spacing-md);
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-plan-header h4 {
+  margin-bottom: var(--bb-spacing-xs);
+  font-size: var(--bb-font-size-lg);
+}
+
+.bb-plan-price {
+  font-size: var(--bb-font-size-xl);
+  font-weight: 700;
+  color: var(--bb-business-primary);
+}
+
+.bb-plan-price span {
+  font-size: var(--bb-font-size-sm);
+  font-weight: 400;
+  color: var(--bb-alternate-text);
+}
+
+.bb-plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--bb-spacing-md) 0;
+}
+
+.bb-plan-features li {
+  padding: var(--bb-spacing-xs) 0;
+  position: relative;
+  padding-left: 24px;
+}
+
+.bb-plan-features li:before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--bb-business-primary);
+}
+
+.bb-plan-action {
+  text-align: center;
+}
+
+.bb-form-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--bb-spacing-lg);
+}
+
+/* Business directory styles */
+.bb-business-directory {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.bb-business-directory-header {
+  text-align: center;
+  margin-bottom: var(--bb-spacing-xl);
+}
+
+.bb-business-directory-header h2 {
+  font-size: var(--bb-font-size-xxl);
+  margin-bottom: var(--bb-spacing-sm);
+}
+
+.bb-business-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bb-spacing-md);
+  margin-bottom: var(--bb-spacing-xl);
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  padding: var(--bb-spacing-md);
+}
+
+.bb-business-search {
+  flex: 1;
+  position: relative;
+  min-width: 250px;
+}
+
+.bb-business-search input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-sm);
+  font-family: var(--bb-font-family);
+  font-size: var(--bb-font-size-md);
+}
+
+.bb-filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bb-spacing-md);
+}
+
+.bb-filter-group {
+  min-width: 150px;
+}
+
+.bb-filter-group label {
+  display: block;
+  margin-bottom: var(--bb-spacing-xs);
+  font-size: var(--bb-font-size-sm);
+  color: var(--bb-alternate-text);
+}
+
+.bb-filter-group select {
+  padding: 10px 12px;
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-sm);
+  font-family: var(--bb-font-family);
+  font-size: var(--bb-font-size-md);
+  min-width: 150px;
+}
+
+.bb-business-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: var(--bb-spacing-lg);
+}
+
+.bb-business-card {
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  overflow: hidden;
+  transition: all var(--bb-transition-fast);
+}
+
+.bb-business-card:hover {
+  box-shadow: var(--bb-shadow-md);
+  transform: translateY(-2px);
+}
+
+.bb-business-card-header {
+  padding: var(--bb-spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-business-logo img {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--bb-border-radius-sm);
+  object-fit: cover;
+}
+
+.bb-business-card-content {
+  padding: var(--bb-spacing-md);
+}
+
+.bb-business-name {
+  margin-bottom: var(--bb-spacing-xs);
+  font-size: var(--bb-font-size-lg);
+}
+
+.bb-business-card-meta {
+  display: flex;
+  gap: var(--bb-spacing-md);
+  color: var(--bb-alternate-text);
+  font-size: var(--bb-font-size-sm);
+  margin-bottom: var(--bb-spacing-sm);
+}
+
+.bb-business-description {
+  margin-bottom: var(--bb-spacing-md);
+  color: var(--bb-body-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bb-business-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: var(--bb-spacing-md);
+  padding: var(--bb-spacing-sm) 0;
+  border-top: 1px solid var(--bb-border-color);
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-stat {
+  text-align: center;
+}
+
+.bb-stat-value {
+  font-size: var(--bb-font-size-lg);
+  font-weight: 700;
+  color: var(--bb-business-primary);
+  display: block;
+}
+
+.bb-stat-label {
+  font-size: var(--bb-font-size-xs);
+  color: var(--bb-alternate-text);
+}
+
+.bb-business-card-actions {
+  padding: var(--bb-spacing-md);
+  display: flex;
+  gap: var(--bb-spacing-sm);
+}
+
+.bb-business-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--bb-spacing-xl);
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+}
+
+/* Business team management styles */
+.bb-business-team {
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  padding: var(--bb-spacing-lg);
+  margin-bottom: var(--bb-spacing-xl);
+}
+
+.bb-business-team-header {
+  margin-bottom: var(--bb-spacing-lg);
+}
+
+.bb-invite-form {
+  margin-bottom: var(--bb-spacing-xl);
+  padding-bottom: var(--bb-spacing-lg);
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-team-list h4 {
+  margin-bottom: var(--bb-spacing-md);
+}
+
+.bb-team-table {
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-md);
+  overflow: hidden;
+}
+
+.bb-team-header {
+  display: flex;
+  background-color: var(--bb-light-background);
+  padding: var(--bb-spacing-sm) var(--bb-spacing-md);
+  font-weight: 500;
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-team-row {
+  display: flex;
+  padding: var(--bb-spacing-sm) var(--bb-spacing-md);
+  border-bottom: 1px solid var(--bb-border-color);
+}
+
+.bb-team-row:last-child {
+  border-bottom: none;
+}
+
+.bb-team-col {
+  padding: var(--bb-spacing-xs) 0;
+}
+
+.bb-col-member {
+  flex: 3;
+}
+
+.bb-col-role,
+.bb-col-status,
+.bb-col-joined {
+  flex: 1;
+}
+
+.bb-col-actions {
+  flex: 1;
+  text-align: right;
+}
+
+.bb-team-member {
+  display: flex;
+  align-items: center;
+}
+
+.bb-team-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--bb-border-radius-circle);
+  margin-right: var(--bb-spacing-sm);
+  object-fit: cover;
+}
+
+.bb-team-name {
+  font-weight: 500;
+}
+
+.bb-team-email {
+  font-size: var(--bb-font-size-xs);
+  color: var(--bb-alternate-text);
+}
+
+.bb-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--bb-border-radius-sm);
+  font-size: var(--bb-font-size-xs);
+}
+
+.bb-status-active {
+  background-color: var(--bb-success);
+  color: white;
+}
+
+.bb-status-pending {
+  background-color: var(--bb-warning);
+  color: white;
+}
+
+.bb-status-inactive {
+  background-color: var(--bb-alternate-text);
+  color: white;
+}
+
+.bb-button-danger {
+  background-color: var(--bb-danger);
+  color: white;
+  border-color: var(--bb-danger);
+}
+
+.bb-button-danger:hover {
+  background-color: #B91C1C;
+  border-color: #B91C1C;
+}
+
+.bb-button-sm {
+  padding: 4px 8px;
+  font-size: var(--bb-font-size-xs);
+}
+
+/* Business analytics dashboard styles */
+.bb-business-analytics {
+  background-color: var(--bb-background);
+  border-radius: var(--bb-border-radius-md);
+  box-shadow: var(--bb-shadow-sm);
+  padding: var(--bb-spacing-lg);
+  margin-bottom: var(--bb-spacing-xl);
+}
+
+.bb-analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--bb-spacing-lg);
+}
+
+.bb-analytics-period select {
+  padding: 8px 12px;
+  border: 1px solid var(--bb-border-color);
+  border-radius: var(--bb-border-radius-sm);
+  font-family: var(--bb-font-family);
+  font-size: var(--bb-font-size-sm);
+}
+
+.bb-analytics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--bb-spacing-md);
+  margin-bottom: var(--bb-spacing-xl);
+}
+
+.bb-analytics-card {
+  background-color: var(--bb-light-background);
+  border-radius: var(--bb-border-radius-md);
+  padding: var(--bb-spacing-md);
+  display: flex;
+  align-items: center;
+}
+
+.bb-analytics-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--bb-border-radius-circle);
+  background-color: var(--bb-business-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-right: var(--bb-spacing-md);
+}
+
+.bb-analytics-data {
+  flex: 1;
+}
+
+.bb-analytics-value {
+  font-size: var(--bb-font-size-xl);
+  font-weight: 700;
+}
+
+.bb-analytics-label {
+  font-size: var(--bb-font-size-sm);
+  color: var(--bb-alternate-text);
+}
+
+.bb-analytics-trend {
+  font-size: var(--bb-font-size-sm);
+  font-weight: 500;
+}
+
+.bb-trend-up {
+  color: var(--bb-success);
+}
+
+.bb-trend-up:before {
+  content: '↑ ';
+}
+
+.bb-trend-down {
+  color: var(--bb-danger);
+}
+
+.bb-trend-down:before {
+  content: '↓ ';
+}
+
+.bb-analytics-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: var(--bb-spacing-lg);
+}
+
+.bb-chart-container {
+  background-color: var(--bb-light-background);
+  border-radius: var(--bb-border-radius-md);
+  padding: var(--bb-spacing-md);
+}
+
+.bb-chart-container h4 {
+  margin-bottom: var(--bb-spacing-md);
+}
+
+.bb-chart-placeholder {
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--bb-border-color);
+  border-radius: var(--bb-border-radius-sm);
+  color: var(--bb-alternate-text);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .bb-business-content {
+    flex-direction: column;
+  }
+  
+  .bb-business-logo {
+    margin-top: -60px;
+    margin-right: 0;
+    margin-bottom: var(--bb-spacing-md);
+  }
+  
+  .bb-business-logo img {
+    width: 120px;
+    height: 120px;
+  }
+  
+  .bb-business-actions {
+    margin-left: 0;
+    margin-top: var(--bb-spacing-md);
+  }
+  
+  .bb-form-row {
+    flex-direction: column;
+    gap: var(--bb-spacing-sm);
+  }
+  
+  .bb-plan-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .bb-team-header {
+    display: none;
+  }
+  
+  .bb-team-row {
+    flex-direction: column;
+    padding: var(--bb-spacing-md);
+  }
+  
+  .bb-team-col {
+    padding: var(--bb-spacing-xs) 0;
+  }
+  
+  .bb-col-actions {
+    text-align: left;
+    margin-top: var(--bb-spacing-sm);
+  }
+  
+  .bb-analytics-charts {
+    grid-template-columns: 1fr;
+  }
+}

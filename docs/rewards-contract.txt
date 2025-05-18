@@ -1,0 +1,180 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract GamificationRewards is ERC721, Ownable {
+    struct Achievement {
+        string name;
+        string description;
+        uint256 xpReward;
+        bool repeatable;
+        uint256 maxTimes;
+    }
+
+    struct Quest {
+        string name;
+        string description;
+        uint256 requiredAmount;
+        uint256 xpReward;
+        uint256 tokenReward;
+        bool active;
+    }
+
+    struct UserProgress {
+        uint256 xp;
+        uint256 level;
+        uint256 reputation;
+        mapping(uint256 => uint256) achievementProgress;
+        mapping(uint256 => bool) questsCompleted;
+        uint256[] badges;
+    }
+
+    mapping(address => UserProgress) public userProgress;
+    mapping(uint256 => Achievement) public achievements;
+    mapping(uint256 => Quest) public quests;
+    
+    uint256 public nextAchievementId;
+    uint256 public nextQuestId;
+    uint256 public nextBadgeId;
+
+    IERC20 public rewardToken;
+
+    event AchievementUnlocked(address user, uint256 achievementId);
+    event QuestCompleted(address user, uint256 questId);
+    event BadgeAwarded(address user, uint256 badgeId);
+    event LevelUp(address user, uint256 newLevel);
+
+    constructor(address _rewardToken) ERC721("Platform Badges", "BADGE") {
+        rewardToken = IERC20(_rewardToken);
+    }
+
+    function addAchievement(
+        string memory name,
+        string memory description,
+        uint256 xpReward,
+        bool repeatable,
+        uint256 maxTimes
+    ) external onlyOwner {
+        achievements[nextAchievementId] = Achievement(
+            name,
+            description,
+            xpReward,
+            repeatable,
+            maxTimes
+        );
+        nextAchievementId++;
+    }
+
+    function addQuest(
+        string memory name,
+        string memory description,
+        uint256 requiredAmount,
+        uint256 xpReward,
+        uint256 tokenReward
+    ) external onlyOwner {
+        quests[nextQuestId] = Quest(
+            name,
+            description,
+            requiredAmount,
+            xpReward,
+            tokenReward,
+            true
+        );
+        nextQuestId++;
+    }
+
+    function unlockAchievement(address user, uint256 achievementId) external {
+        Achievement memory achievement = achievements[achievementId];
+        require(achievement.xpReward > 0, "Achievement doesn't exist");
+        
+        UserProgress storage progress = userProgress[user];
+        
+        if (!achievement.repeatable) {
+            require(
+                progress.achievementProgress[achievementId] == 0,
+                "Already unlocked"
+            );
+        } else {
+            require(
+                progress.achievementProgress[achievementId] < achievement.maxTimes,
+                "Max times reached"
+            );
+        }
+
+        progress.achievementProgress[achievementId]++;
+        progress.xp += achievement.xpReward;
+        checkLevelUp(user);
+
+        emit AchievementUnlocked(user, achievementId);
+    }
+
+    function completeQuest(address user, uint256 questId) external {
+        Quest memory quest = quests[questId];
+        require(quest.active, "Quest not active");
+        
+        UserProgress storage progress = userProgress[user];
+        require(!progress.questsCompleted[questId], "Quest already completed");
+
+        progress.questsCompleted[questId] = true;
+        progress.xp += quest.xpReward;
+        
+        if (quest.tokenReward > 0) {
+            require(
+                rewardToken.transfer(user, quest.tokenReward),
+                "Reward transfer failed"
+            );
+        }
+
+        checkLevelUp(user);
+        emit QuestCompleted(user, questId);
+    }
+
+    function awardBadge(address user, string memory tokenURI) external onlyOwner {
+        uint256 badgeId = nextBadgeId++;
+        _safeMint(user, badgeId);
+        userProgress[user].badges.push(badgeId);
+        emit BadgeAwarded(user, badgeId);
+    }
+
+    function checkLevelUp(address user) internal {
+        UserProgress storage progress = userProgress[user];
+        uint256 newLevel = progress.xp / 1000; // 1000 XP per level
+        
+        if (newLevel > progress.level) {
+            progress.level = newLevel;
+            emit LevelUp(user, newLevel);
+        }
+    }
+
+    function getUserProgress(address user) external view returns (
+        uint256 xp,
+        uint256 level,
+        uint256 reputation,
+        uint256[] memory badges
+    ) {
+        UserProgress storage progress = userProgress[user];
+        return (
+            progress.xp,
+            progress.level,
+            progress.reputation,
+            progress.badges
+        );
+    }
+
+    function isAchievementUnlocked(
+        address user,
+        uint256 achievementId
+    ) external view returns (bool) {
+        return userProgress[user].achievementProgress[achievementId] > 0;
+    }
+
+    function isQuestCompleted(
+        address user,
+        uint256 questId
+    ) external view returns (bool) {
+        return userProgress[user].questsCompleted[questId];
+    }
+}

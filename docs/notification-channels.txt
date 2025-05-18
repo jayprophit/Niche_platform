@@ -1,0 +1,118 @@
+class NotificationChannels {
+  constructor() {
+    this.channels = {
+      push: new PushNotificationChannel(),
+      email: new EmailChannel(),
+      sms: new SMSChannel(),
+      web: new WebPushChannel(),
+      inApp: new InAppChannel(),
+      blockchain: new BlockchainChannel()
+    };
+  }
+}
+
+class PushNotificationChannel {
+  constructor() {
+    this.providers = {
+      firebase: new FirebasePush(),
+      apn: new ApplePush(),
+      webPush: new WebPush()
+    };
+    this.tokenManager = new DeviceTokenManager();
+  }
+
+  async send(user, notification) {
+    const tokens = await this.tokenManager.getTokens(user.id);
+    return Promise.all(
+      tokens.map(token => this.sendToDevice(token, notification))
+    );
+  }
+
+  async sendToDevice(token, notification) {
+    const provider = this.getProviderForToken(token);
+    return provider.send(token, notification);
+  }
+}
+
+class EmailChannel {
+  constructor() {
+    this.mailer = new EmailService();
+    this.templates = new EmailTemplates();
+    this.tracking = new EmailTracking();
+  }
+
+  async send(user, notification) {
+    const template = await this.templates.getTemplate(notification.type);
+    const email = await this.templates.render(template, {
+      user,
+      notification
+    });
+    
+    const sent = await this.mailer.send(email);
+    await this.tracking.track(sent);
+    return sent;
+  }
+}
+
+class WebPushChannel {
+  constructor() {
+    this.subscriptions = new WebPushSubscriptions();
+    this.encryption = new WebPushEncryption();
+    this.vapid = new VAPIDKeys();
+  }
+
+  async send(user, notification) {
+    const subscriptions = await this.subscriptions.get(user.id);
+    return Promise.all(
+      subscriptions.map(subscription =>
+        this.sendToSubscription(subscription, notification)
+      )
+    );
+  }
+
+  async sendToSubscription(subscription, notification) {
+    const payload = await this.encryption.encrypt(notification, subscription);
+    return webPush.sendNotification(subscription, payload);
+  }
+}
+
+class BlockchainChannel {
+  constructor() {
+    this.contracts = new NotificationContracts();
+    this.events = new BlockchainEvents();
+  }
+
+  async send(user, notification) {
+    const event = await this.events.createEvent(notification);
+    return this.contracts.emitNotification(user.address, event);
+  }
+}
+
+class InAppChannel {
+  constructor() {
+    this.store = new NotificationStore();
+    this.realtime = new RealtimeNotifications();
+  }
+
+  async send(user, notification) {
+    await this.store.save(user.id, notification);
+    return this.realtime.notify(user.id, notification);
+  }
+}
+
+class SMSChannel {
+  constructor() {
+    this.provider = new SMSProvider();
+    this.templates = new SMSTemplates();
+    this.compliance = new SMSCompliance();
+  }
+
+  async send(user, notification) {
+    if (await this.compliance.canSend(user)) {
+      const message = await this.templates.render(notification);
+      return this.provider.send(user.phone, message);
+    }
+  }
+}
+
+export default NotificationChannels;

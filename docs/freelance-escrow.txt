@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract FreelanceEscrow is ReentrancyGuard, Ownable {
+    enum ProjectStatus { Created, Funded, InProgress, Completed, Disputed, Resolved }
+    enum DisputeResolution { None, ClientWins, FreelancerWins, Split }
+
+    struct Project {
+        address client;
+        address freelancer;
+        uint256 amount;
+        uint256 deadline;
+        address paymentToken;
+        ProjectStatus status;
+        uint256 milestones;
+        uint256 completedMilestones;
+        uint256 disputeTimelock;
+        DisputeResolution disputeResolution;
+    }
+
+    mapping(uint256 => Project) public projects;
+    mapping(uint256 => mapping(uint256 => bool)) public milestoneReleased;
+    
+    uint256 private projectCounter;
+    uint256 public platformFee = 5; // 0.5%
+    uint256 public constant DISPUTE_PERIOD = 7 days;
+
+    event ProjectCreated(uint256 indexed projectId, address client, address freelancer);
+    event ProjectFunded(uint256 indexed projectId, uint256 amount);
+    event MilestoneReleased(uint256 indexed projectId, uint256 milestone);
+    event DisputeRaised(uint256 indexed projectId);
+    event DisputeResolved(uint256 indexed projectId, DisputeResolution resolution);
+
+    constructor() {}
+
+    function createProject(
+        address freelancer,
+        uint256 amount,
+        uint256 deadline,
+        address paymentToken,
+        uint256 milestones
+    ) external returns (uint256) {
+        require(milestones > 0, "Must have at least one milestone");
+        require(deadline > block.timestamp, "Invalid deadline");
+
+        projectCounter++;
+        
+        projects[projectCounter] = Project({
+            client: msg.sender,
+            freelancer: freelancer,
+            amount: amount,
+            deadline: deadline,
+            paymentToken: paymentToken,
+            status: ProjectStatus.Created,
+            milestones: milestones,
+            completedMilestones: 0,
+            disputeTimelock: 0,
+            disputeResolution: DisputeResolution.None
+        });
+
+        emit ProjectCreated(projectCounter, msg.sender, freelancer);
+        return projectCounter;
+    }
+
+    function fundProject(uint256 projectId) external nonReentrant {
+        Project storage project = projects[projectId];
+        require(project.status == ProjectStatus.Created, "Invalid project status");
+        require(msg.sender == project.client, "Only client can fund");
+
+        IERC20 token = IERC20(project.paymentToken);
+        uint256 totalAmount = project.amount + calculateFee(project.amount);
+        
+        require(
+            token.transferFrom(msg.sender, address(this), totalAmount),
+            "Transfer failed"
+        );
+
+        project.status = ProjectStatus.Funded;
+        emit ProjectFunded(projectId, totalAmount);
+    }
+
+    function releaseMilestone(uint256 projectId, uint256 milestone) external {
+        Project storage project = projects[projectId];
+        require(msg.sender == project.client, "Only client can release");
+        require(milestone < project.milestones, "Invalid milestone");
+        require(!milestoneReleased[projectId][milestone], "Already released");
+
+        uint256 milestoneAmount = project.amount / project.milestones;
+        IERC20 token = IERC20(project.paymentToken);
+
+        require(
+            token.transfer(project.freelancer, milestoneAmount),
+            "Transfer failed"
+        );
+
+        milestoneReleased[projectId][milestone] = true;
+        project.completedMilestones++;
+
+        if (project.completedMilestones == project.milestones) {
+            project.status = ProjectStatus.Completed;
+            // Transfer platform fee
+            uint256 fee = calculateFee(project.amount);
+            require(token.transfer(owner(), fee), "Fee transfer failed");
+        }
+
+        emit MilestoneReleased(projectId, milestone);
+    }
+
+    function raiseDispute(uint256 projectId) external {
+        Project storage project = projects[projectId];
+        require(
+            msg.sender == project.client || msg.sender == project.freelancer,
+            "Unauthorized"
+        );
+        require(
+            project.status == ProjectStatus.InProgress ||
+            project.status == ProjectStatus.Funded,
+            "Invalid status"
+        );
+
+        project.status = ProjectStatus.Disputed;
+        project.disputeTimelock = block.timestamp + DISPUTE_PERIOD;
+        emit DisputeRaised(projectId);
+    }
+
+    function resolveDispute(
+        uint256 projectId,
+        DisputeResolution resolution
+    ) external onlyOwner {
+        Project storage project = projects[projectId];
+        require(project.status == ProjectStatus.Disputed, "Not disputed");
+        require(block.timestamp >= project.disputeTimelock, "Timelock active");
+
+        project.status = ProjectStatus.Resolved;
+        project.disputeResolution = resolution;
+
+        IERC20 token = IERC20(project.paymentToken);
+        uint256 remainingAmount = project.amount - 
+            (project.amount * project.completedMilestones) / project.milestones;
+
+        if (resolution == DisputeResolution.ClientWins) {
+            require(token.transfer(project.client, remainingAmount), "Transfer failed");
+        } else if (resolution == DisputeResolution.FreelancerWins) {
+            require(token.transfer(project.freelancer, remainingAmount), "Transfer failed");
+        } else if (resolution == DisputeResolution.Split) {
+            uint256 half = remainingAmount / 2;
+            require(token.transfer(project.client, half), "Client transfer failed");
+            require(token.transfer(project.freelancer, half), "Freelancer transfer failed");
+        }
+
+        emit DisputeResolved(projectId, resolution);
+    }
+
+    function calculateFee(uint256 amount) public view returns (uint256) {
+        return (amount * platformFee) / 1000;
+    }
+
+    function setFee(uint256 newFee) external onlyOwner {
+        require(newFee <= 100, "Fee too high"); // max 10%
+        platformFee = newFee;
+    }
+
+    function getProject(uint256 projectId) external view returns (
+        address client,
+        address freelancer,
+        uint256 amount,
+        uint256 deadline,
+        ProjectStatus status,
+        uint256 milestones,
+        uint256 completedMilestones
+    ) {
+        Project memory project = projects[projectId];
+        return (
+            project.client,
+            project.freelancer,
+            project.amount,
+            project.deadline,
+            project.status,
+            project.milestones,
+            project.completedMilestones
+        );
+    }
+}

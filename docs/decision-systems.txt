@@ -1,0 +1,44 @@
+class DecisionMaking {
+  constructor() {
+    this.pathfinding = new PathfindingSystem();
+    this.decisionTree = new DecisionTree();
+    this.utility = new UtilityAI();
+    this.taskPlanner = new TaskPlanning();
+  }
+
+  async makeDecision(npc, context) {
+    const utility = await this.utility.evaluate(context);
+    const decision = await this.decisionTree.process(utility);
+    return this.taskPlanner.createPlan(decision);
+  }
+}
+
+class PathfindingSystem {
+  constructor() {
+    this.astar = new AStarPathfinder();
+    this.navMesh = new NavigationMesh();
+    this.flowField = new FlowField();
+  }
+
+  async findPath(start, goal, constraints) {
+    const path = await this.astar.findPath(start, goal);
+    await this.smoothPath(path);
+    return this.optimizePath(path, constraints);
+  }
+}
+
+class UtilityAI {
+  constructor() {
+    this.scores = new UtilityScorer();
+    this.curves = new ResponseCurves();
+    this.weights = new WeightSystem();
+  }
+
+  async evaluate(context) {
+    const scores = await this.scores.calculate(context);
+    const weighted = await this.weights.apply(scores);
+    return this.selectBestAction(weighted);
+  }
+}
+
+export default DecisionMaking;

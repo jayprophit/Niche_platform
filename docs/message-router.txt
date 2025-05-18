@@ -1,0 +1,325 @@
+import { injectable, inject } from 'inversify';
+import { 
+    RouterConfig, 
+    MessagePattern, 
+    RouteRule,
+    MessageTransformer,
+    RouteMatch,
+    RoutingContext
+} from './types/messaging';
+
+@injectable()
+export class MessageRouter {
+    private patterns: Map<string, MessagePattern>;
+    private rules: Map<string, RouteRule>;
+    private transformers: Map<string, MessageTransformer>;
+    private readonly monitoring: RouterMonitoring;
+
+    constructor(private readonly config: RouterConfig) {
+        this.patterns = new Map();
+        this.rules = new Map();
+        this.transformers = new Map();
+        this.monitoring = new RouterMonitoring(config.monitoring);
+    }
+
+    // ... previous methods remain the same ...
+
+    // Routing Logic
+    async routeMessage<T>(message: T, context?: RoutingContext): Promise<RouteMatch[]> {
+        try {
+            const matches: RouteMatch[] = [];
+            const routingContext = this.createRoutingContext(message, context);
+
+            // Match patterns
+            for (const pattern of this.patterns.values()) {
+                if (await this.matchesPattern(message, pattern, routingContext)) {
+                    const transformedMessage = await this.transformMessage(message, pattern);
+                    const rules = this.findMatchingRules(pattern, routingContext);
+                    
+                    for (const rule of rules) {
+                        const match = await this.applyRule(transformedMessage, rule, routingContext);
+                        if (match) {
+                            matches.push(match);
+                        }
+                    }
+                }
+            }
+
+            await this.monitoring.logRouting(matches.length);
+            return matches;
+        } catch (error) {
+            throw new RouterOperationError('routeMessage', error);
+        }
+    }
+
+    private async matchesPattern<T>(
+        message: T,
+        pattern: MessagePattern,
+        context: RoutingContext
+    ): Promise<boolean> {
+        try {
+            // Check pattern conditions
+            const conditions = pattern.conditions || [];
+            const results = await Promise.all(
+                conditions.map(condition => this.evaluateCondition(message, condition, context))
+            );
+
+            return results.every(result => result === true);
+        } catch (error) {
+            await this.monitoring.logPatternMatchError(pattern.id, error);
+            return false;
+        }
+    }
+
+    private async transformMessage<T>(
+        message: T,
+        pattern: MessagePattern
+    ): Promise<any> {
+        try {
+            let transformedMessage = message;
+
+            // Apply pattern-specific transformers
+            if (pattern.transformers) {
+                for (const transformerId of pattern.transformers) {
+                    const transformer = this.transformers.get(transformerId);
+                    if (transformer) {
+                        transformedMessage = await transformer.transform(transformedMessage);
+                    }
+                }
+            }
+
+            return transformedMessage;
+        } catch (error) {
+            throw new MessageTransformationError(error);
+        }
+    }
+
+    private findMatchingRules(
+        pattern: MessagePattern,
+        context: RoutingContext
+    ): RouteRule[] {
+        const matchingRules: RouteRule[] = [];
+
+        for (const rule of this.rules.values()) {
+            if (this.ruleMatchesPattern(rule, pattern) && this.ruleMatchesContext(rule, context)) {
+                matchingRules.push(rule);
+            }
+        }
+
+        return matchingRules;
+    }
+
+    private async applyRule<T>(
+        message: T,
+        rule: RouteRule,
+        context: RoutingContext
+    ): Promise<RouteMatch | null> {
+        try {
+            // Check rule conditions
+            if (rule.conditions) {
+                const conditionsMet = await this.evaluateRuleConditions(message, rule, context);
+                if (!conditionsMet) {
+                    return null;
+                }
+            }
+
+            // Apply rule transformations
+            const transformedMessage = await this.applyRuleTransformations(message, rule);
+
+            // Create route match
+            return {
+                message: transformedMessage,
+                pattern: rule.pattern,
+                destination: rule.destination,
+                metadata: {
+                    ruleId: rule.id,
+                    timestamp: Date.now(),
+                    context: context
+                }
+            };
+        } catch (error) {
+            await this.monitoring.logRuleApplicationError(rule.id, error);
+            return null;
+        }
+    }
+
+    private async evaluateCondition<T>(
+        message: T,
+        condition: any,
+        context: RoutingContext
+    ): Promise<boolean> {
+        try {
+            return await condition.evaluate(message, context);
+        } catch (error) {
+            await this.monitoring.logConditionEvaluationError(error);
+            return false;
+        }
+    }
+
+    private async evaluateRuleConditions<T>(
+        message: T,
+        rule: RouteRule,
+        context: RoutingContext
+    ): Promise<boolean> {
+        try {
+            const results = await Promise.all(
+                rule.conditions.map(condition => 
+                    this.evaluateCondition(message, condition, context)
+                )
+            );
+            return results.every(result => result === true);
+        } catch (error) {
+            await this.monitoring.logRuleConditionError(rule.id, error);
+            return false;
+        }
+    }
+
+    private async applyRuleTransformations<T>(
+        message: T,
+        rule: RouteRule
+    ): Promise<any> {
+        let transformedMessage = message;
+
+        if (rule.transformations) {
+            for (const transformation of rule.transformations) {
+                const transformer = this.transformers.get(transformation.transformer);
+                if (transformer) {
+                    transformedMessage = await transformer.transform(
+                        transformedMessage,
+                        transformation.config
+                    );
+                }
+            }
+        }
+
+        return transformedMessage;
+    }
+
+    private ruleMatchesPattern(rule: RouteRule, pattern: MessagePattern): boolean {
+        return rule.pattern === pattern.id;
+    }
+
+    private ruleMatchesContext(rule: RouteRule, context: RoutingContext): boolean {
+        if (!rule.contextRequirements) {
+            return true;
+        }
+
+        for (const [key, requirement] of Object.entries(rule.contextRequirements)) {
+            const contextValue = context[key];
+            if (!this.matchesRequirement(contextValue, requirement)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private matchesRequirement(value: any, requirement: any): boolean {
+        if (typeof requirement === 'function') {
+            return requirement(value);
+        }
+        return value === requirement;
+    }
+
+    private createRoutingContext(message: any, context?: RoutingContext): RoutingContext {
+        return {
+            timestamp: Date.now(),
+            messageType: this.detectMessageType(message),
+            ...context
+        };
+    }
+
+    private detectMessageType(message: any): string {
+        // Implementation of message type detection logic
+        return typeof message;
+    }
+
+    // Validation Methods
+    private async validatePattern(pattern: MessagePattern): Promise<void> {
+        if (!pattern.id || !pattern.conditions) {
+            throw new ValidationError('Invalid pattern configuration');
+        }
+    }
+
+    private async validateRule(rule: RouteRule): Promise<void> {
+        if (!rule.id || !rule.pattern || !rule.destination) {
+            throw new ValidationError('Invalid rule configuration');
+        }
+    }
+
+    private async validateTransformer(transformer: MessageTransformer): Promise<void> {
+        if (!transformer.id || !transformer.transform) {
+            throw new ValidationError('Invalid transformer configuration');
+        }
+    }
+
+    // Monitoring & Management
+    async getMetrics(): Promise<RouterMetrics> {
+        return this.monitoring.getMetrics();
+    }
+
+    async healthCheck(): Promise<RouterHealth> {
+        return {
+            status: 'healthy',
+            patterns: this.patterns.size,
+            rules: this.rules.size,
+            transformers: this.transformers.size,
+            metrics: await this.monitoring.getMetrics()
+        };
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        await this.monitoring.stop();
+        this.patterns.clear();
+        this.rules.clear();
+        this.transformers.clear();
+    }
+}
+
+// Error Classes
+class RouterError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'RouterError';
+    }
+}
+
+class RouterInitializationError extends RouterError {
+    constructor(error: any) {
+        super(`Router initialization failed: ${error.message}`);
+        this.name = 'RouterInitializationError';
+    }
+}
+
+class RouterOperationError extends RouterError {
+    constructor(operation: string, error: any) {
+        super(`Router operation '${operation}' failed: ${error.message}`);
+        this.name = 'RouterOperationError';
+    }
+}
+
+class MessageTransformationError extends RouterError {
+    constructor(error: any) {
+        super(`Message transformation failed: ${error.message}`);
+        this.name = 'MessageTransformationError';
+    }
+}
+
+class ValidationError extends RouterError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
+export {
+    MessageRouter,
+    RouterConfig,
+    MessagePattern,
+    RouteRule,
+    MessageTransformer,
+    RouteMatch,
+    RouterMetrics,
+    RouterHealth
+};

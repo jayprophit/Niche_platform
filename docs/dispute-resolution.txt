@@ -1,0 +1,182 @@
+//SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract DisputeResolution is AccessControl, ReentrancyGuard {
+    bytes32 public constant ARBITRATOR_ROLE = keccak256("ARBITRATOR_ROLE");
+    
+    enum DisputeStatus { Created, Evidence, Arbitration, Resolved, Appealed }
+    enum Resolution { Pending, ClientWins, FreelancerWins, Split }
+
+    struct Dispute {
+        uint256 projectId;
+        address client;
+        address freelancer;
+        uint256 amount;
+        address paymentToken;
+        string evidence;
+        DisputeStatus status;
+        Resolution resolution;
+        address arbitrator;
+        uint256 appealDeadline;
+        bool appealed;
+    }
+
+    struct Evidence {
+        address submitter;
+        string evidence;
+        uint256 timestamp;
+    }
+
+    mapping(uint256 => Dispute) public disputes;
+    mapping(uint256 => Evidence[]) public evidenceList;
+    mapping(address => uint256[]) public arbitratorCases;
+    
+    uint256 private disputeCounter;
+    uint256 public constant EVIDENCE_PERIOD = 7 days;
+    uint256 public constant APPEAL_PERIOD = 3 days;
+    uint256 public appealFee = 0.1 ether;
+
+    event DisputeCreated(uint256 indexed disputeId, uint256 indexed projectId);
+    event EvidenceSubmitted(uint256 indexed disputeId, address indexed submitter);
+    event ArbitratorAssigned(uint256 indexed disputeId, address indexed arbitrator);
+    event DisputeResolved(uint256 indexed disputeId, Resolution resolution);
+    event DisputeAppealed(uint256 indexed disputeId);
+
+    constructor() {
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    function createDispute(
+        uint256 projectId,
+        address client,
+        address freelancer,
+        uint256 amount,
+        address paymentToken,
+        string memory initialEvidence
+    ) external returns (uint256) {
+        require(msg.sender == client || msg.sender == freelancer, "Unauthorized");
+        
+        disputeCounter++;
+        
+        disputes[disputeCounter] = Dispute({
+            projectId: projectId,
+            client: client,
+            freelancer: freelancer,
+            amount: amount,
+            paymentToken: paymentToken,
+            evidence: initialEvidence,
+            status: DisputeStatus.Evidence,
+            resolution: Resolution.Pending,
+            arbitrator: address(0),
+            appealDeadline: block.timestamp + EVIDENCE_PERIOD,
+            appealed: false
+        });
+
+        evidenceList[disputeCounter].push(Evidence({
+            submitter: msg.sender,
+            evidence: initialEvidence,
+            timestamp: block.timestamp
+        }));
+
+        emit DisputeCreated(disputeCounter, projectId);
+        return disputeCounter;
+    }
+
+    function submitEvidence(
+        uint256 disputeId, 
+        string memory evidence
+    ) external {
+        Dispute storage dispute = disputes[disputeId];
+        require(
+            msg.sender == dispute.client || msg.sender == dispute.freelancer,
+            "Unauthorized"
+        );
+        require(dispute.status == DisputeStatus.Evidence, "Evidence period closed");
+        require(block.timestamp <= dispute.appealDeadline, "Evidence period ended");
+
+        evidenceList[disputeId].push(Evidence({
+            submitter: msg.sender,
+            evidence: evidence,
+            timestamp: block.timestamp
+        }));
+
+        emit EvidenceSubmitted(disputeId, msg.sender);
+    }
+
+    function assignArbitrator(uint256 disputeId) external onlyRole(ARBITRATOR_ROLE) {
+        Dispute storage dispute = disputes[disputeId];
+        require(dispute.status == DisputeStatus.Evidence, "Invalid status");
+        require(block.timestamp > dispute.appealDeadline, "Evidence period active");
+
+        dispute.arbitrator = msg.sender;
+        dispute.status = DisputeStatus.Arbitration;
+        arbitratorCases[msg.sender].push(disputeId);
+
+        emit ArbitratorAssigned(disputeId, msg.sender);
+    }
+
+    function resolveDispute(
+        uint256 disputeId,
+        Resolution resolution
+    ) external nonReentrant {
+        Dispute storage dispute = disputes[disputeId];
+        require(msg.sender == dispute.arbitrator, "Not arbitrator");
+        require(dispute.status == DisputeStatus.Arbitration, "Invalid status");
+        require(resolution != Resolution.Pending, "Invalid resolution");
+
+        IERC20 token = IERC20(dispute.paymentToken);
+
+        if (resolution == Resolution.ClientWins) {
+            require(token.transfer(dispute.client, dispute.amount), "Transfer failed");
+        } else if (resolution == Resolution.FreelancerWins) {
+            require(token.transfer(dispute.freelancer, dispute.amount), "Transfer failed");
+        } else if (resolution == Resolution.Split) {
+            uint256 half = dispute.amount / 2;
+            require(token.transfer(dispute.client, half), "Client transfer failed");
+            require(token.transfer(dispute.freelancer, half), "Freelancer transfer failed");
+        }
+
+        dispute.resolution = resolution;
+        dispute.status = DisputeStatus.Resolved;
+        dispute.appealDeadline = block.timestamp + APPEAL_PERIOD;
+
+        emit DisputeResolved(disputeId, resolution);
+    }
+
+    function appealDispute(uint256 disputeId) external payable {
+        Dispute storage dispute = disputes[disputeId];
+        require(
+            msg.sender == dispute.client || msg.sender == dispute.freelancer,
+            "Unauthorized"
+        );
+        require(dispute.status == DisputeStatus.Resolved, "Not resolved");
+        require(block.timestamp <= dispute.appealDeadline, "Appeal period ended");
+        require(msg.value >= appealFee, "Insufficient fee");
+        require(!dispute.appealed, "Already appealed");
+
+        dispute.appealed = true;
+        dispute.status = DisputeStatus.Appealed;
+        
+        emit DisputeAppealed(disputeId);
+    }
+
+    function getEvidence(uint256 disputeId) external view returns (Evidence[] memory) {
+        return evidenceList[disputeId];
+    }
+
+    function getArbitratorCases(address arbitrator) external view returns (uint256[] memory) {
+        return arbitratorCases[arbitrator];
+    }
+
+    function setAppealFee(uint256 newFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        appealFee = newFee;
+    }
+
+    function withdrawFees() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        payable(msg.sender).transfer(address(this).balance);
+    }
+}

@@ -1,0 +1,316 @@
+import { injectable, inject } from 'inversify';
+import { 
+    EventBusConfig,
+    Event,
+    EventHandler,
+    EventFilter,
+    DeliveryOptions,
+    SubscriptionOptions,
+    RetryPolicy
+} from './types/events';
+
+@injectable()
+export class EventBus {
+    // ... previous properties and constructor remain the same ...
+
+    // Filter Management
+    async addFilter(
+        eventType: string,
+        filter: EventFilter,
+        options?: FilterOptions
+    ): Promise<string> {
+        try {
+            if (!this.filters.has(eventType)) {
+                this.filters.set(eventType, new Set());
+            }
+
+            const filterSet = this.filters.get(eventType)!;
+            filterSet.add(filter);
+
+            if (options?.persist) {
+                await this.persistence.saveFilter(eventType, filter);
+            }
+
+            await this.monitoring.logFilterAdded(eventType);
+            return filter.id;
+        } catch (error) {
+            throw new EventBusOperationError('addFilter', error);
+        }
+    }
+
+    async removeFilter(
+        eventType: string,
+        filterId: string
+    ): Promise<void> {
+        try {
+            const filterSet = this.filters.get(eventType);
+            if (filterSet) {
+                const filter = Array.from(filterSet)
+                    .find(f => f.id === filterId);
+                
+                if (filter) {
+                    filterSet.delete(filter);
+                    await this.persistence.removeFilter(eventType, filterId);
+                    await this.monitoring.logFilterRemoved(eventType);
+                }
+            }
+        } catch (error) {
+            throw new EventBusOperationError('removeFilter', error);
+        }
+    }
+
+    // Event Processing
+    private async processSyncHandlers<T extends Event>(event: T): Promise<void> {
+        const handlers = this.handlers.get(event.type) || new Set();
+        
+        for (const handler of handlers) {
+            try {
+                if (handler.sync) {
+                    await this.executeHandler(handler, event);
+                }
+            } catch (error) {
+                await this.handleProcessingError(event, handler, error);
+            }
+        }
+    }
+
+    private async executeHandler<T extends Event>(
+        handler: EventHandler<T>,
+        event: T,
+        retryCount: number = 0
+    ): Promise<void> {
+        try {
+            await handler.handle(event);
+            await this.monitoring.logHandlerSuccess(handler.id, event);
+        } catch (error) {
+            if (this.shouldRetry(handler, retryCount)) {
+                await this.retryHandler(handler, event, retryCount + 1);
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    private async retryHandler<T extends Event>(
+        handler: EventHandler<T>,
+        event: T,
+        retryCount: number
+    ): Promise<void> {
+        const delay = this.calculateRetryDelay(handler.retryPolicy, retryCount);
+        await this.delay(delay);
+        await this.executeHandler(handler, event, retryCount);
+    }
+
+    private shouldRetry(
+        handler: EventHandler<any>,
+        retryCount: number
+    ): boolean {
+        if (!handler.retryPolicy) {
+            return false;
+        }
+
+        return retryCount < handler.retryPolicy.maxRetries;
+    }
+
+    private calculateRetryDelay(
+        policy: RetryPolicy,
+        retryCount: number
+    ): number {
+        switch (policy.strategy) {
+            case 'fixed':
+                return policy.delay;
+            case 'exponential':
+                return policy.delay * Math.pow(2, retryCount);
+            case 'linear':
+                return policy.delay * (retryCount + 1);
+            default:
+                return 1000; // Default 1 second
+        }
+    }
+
+    private async handleProcessingError<T extends Event>(
+        event: T,
+        handler: EventHandler<T>,
+        error: any
+    ): Promise<void> {
+        await this.monitoring.logHandlerError(handler.id, event, error);
+
+        if (handler.errorHandler) {
+            try {
+                await handler.errorHandler(event, error);
+            } catch (errorHandlerError) {
+                await this.monitoring.logErrorHandlerFailure(
+                    handler.id,
+                    event,
+                    errorHandlerError
+                );
+            }
+        }
+
+        await this.moveToDeadLetter(event, handler, error);
+    }
+
+    private async moveToDeadLetter<T extends Event>(
+        event: T,
+        handler: EventHandler<T>,
+        error: any
+    ): Promise<void> {
+        const deadLetterEvent = {
+            originalEvent: event,
+            handler: handler.id,
+            error: {
+                message: error.message,
+                stack: error.stack,
+                timestamp: new Date().toISOString()
+            }
+        };
+
+        await this.messaging.publish('events.dead-letter', deadLetterEvent, {
+            persist: true
+        });
+    }
+
+    // Helper Methods
+    private async enrichEvent<T extends Event>(event: T): Promise<T> {
+        return {
+            ...event,
+            id: event.id || this.generateEventId(),
+            timestamp: event.timestamp || new Date().toISOString(),
+            metadata: {
+                ...event.metadata,
+                publisher: this.config.serviceName,
+                version: this.config.version
+            }
+        };
+    }
+
+    private async applyFilters<T extends Event>(event: T): Promise<boolean> {
+        const filters = this.filters.get(event.type) || new Set();
+        
+        for (const filter of filters) {
+            try {
+                if (!await filter.apply(event)) {
+                    return false;
+                }
+            } catch (error) {
+                await this.monitoring.logFilterError(filter.id, event, error);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private getDeliveryChannel(options?: DeliveryOptions): string {
+        return options?.sync ? 'events.sync' : 'events.async';
+    }
+
+    private generateEventId(): string {
+        return `evt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    // Monitoring & Management
+    async getMetrics(): Promise<EventBusMetrics> {
+        return this.monitoring.getMetrics();
+    }
+
+    async healthCheck(): Promise<EventBusHealth> {
+        return {
+            status: 'healthy',
+            handlers: Array.from(this.handlers.entries()).reduce(
+                (acc, [type, handlers]) => ({
+                    ...acc,
+                    [type]: handlers.size
+                }),
+                {}
+            ),
+            filters: Array.from(this.filters.entries()).reduce(
+                (acc, [type, filters]) => ({
+                    ...acc,
+                    [type]: filters.size
+                }),
+                {}
+            ),
+            metrics: await this.monitoring.getMetrics()
+        };
+    }
+
+    // Recovery
+    async replayEvents(
+        criteria: EventReplayCriteria
+    ): Promise<ReplayResult> {
+        try {
+            const events = await this.persistence.findEvents(criteria);
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (const event of events) {
+                try {
+                    await this.publish(event, { sync: true });
+                    successCount++;
+                } catch (error) {
+                    failureCount++;
+                    await this.monitoring.logReplayFailure(event, error);
+                }
+            }
+
+            return {
+                totalEvents: events.length,
+                successCount,
+                failureCount
+            };
+        } catch (error) {
+            throw new EventBusOperationError('replayEvents', error);
+        }
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        await this.monitoring.stop();
+        await this.messaging.shutdown();
+        await this.persistence.shutdown();
+        
+        this.handlers.clear();
+        this.filters.clear();
+    }
+
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+}
+
+// Error Classes
+class EventBusError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'EventBusError';
+    }
+}
+
+class EventBusInitializationError extends EventBusError {
+    constructor(error: any) {
+        super(`Event bus initialization failed: ${error.message}`);
+        this.name = 'EventBusInitializationError';
+    }
+}
+
+class EventBusOperationError extends EventBusError {
+    constructor(operation: string, error: any) {
+        super(`Event bus operation '${operation}' failed: ${error.message}`);
+        this.name = 'EventBusOperationError';
+    }
+}
+
+export {
+    EventBus,
+    EventBusConfig,
+    Event,
+    EventHandler,
+    EventFilter,
+    DeliveryOptions,
+    RetryPolicy,
+    EventBusMetrics,
+    EventBusHealth,
+    EventReplayCriteria,
+    ReplayResult
+};

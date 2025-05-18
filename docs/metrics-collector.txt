@@ -1,0 +1,263 @@
+    // Utility Methods
+    private getStorageBackends(type: MetricType): StorageBackend[] {
+        const backends: StorageBackend[] = [];
+        
+        // Add time-series storage for all metrics
+        const tsStorage = this.storage.get('timeseries');
+        if (tsStorage) {
+            backends.push(tsStorage);
+        }
+
+        // Add memory storage for real-time metrics
+        if (this.isRealTimeMetric(type)) {
+            const memStorage = this.storage.get('memory');
+            if (memStorage) {
+                backends.push(memStorage);
+            }
+        }
+
+        // Add persistent storage for long-term metrics
+        if (this.isLongTermMetric(type)) {
+            const persistentStorage = this.storage.get('persistent');
+            if (persistentStorage) {
+                backends.push(persistentStorage);
+            }
+        }
+
+        return backends;
+    }
+
+    private getPreferredStorage(preference?: string): StorageBackend {
+        if (preference && this.storage.has(preference)) {
+            return this.storage.get(preference)!;
+        }
+        return this.storage.get('timeseries')!;
+    }
+
+    private isRealTimeMetric(type: MetricType): boolean {
+        return ['gauge', 'counter', 'histogram'].includes(type);
+    }
+
+    private isLongTermMetric(type: MetricType): boolean {
+        return ['aggregate', 'summary'].includes(type);
+    }
+
+    private groupMetricsByType(
+        metrics: MetricData[]
+    ): Map<MetricType, MetricData[]> {
+        return metrics.reduce((groups, metric) => {
+            const group = groups.get(metric.type) || [];
+            group.push(metric);
+            groups.set(metric.type, group);
+            return groups;
+        }, new Map<MetricType, MetricData[]>());
+    }
+
+    // Background Tasks
+    private startBackgroundTasks(): void {
+        // Aggregate metrics periodically
+        setInterval(() => {
+            this.performBackgroundAggregation();
+        }, this.config.aggregation.interval);
+
+        // Clean up old metrics
+        setInterval(() => {
+            this.cleanupOldMetrics();
+        }, this.config.cleanup.interval);
+
+        // Compact storage
+        setInterval(() => {
+            this.compactStorage();
+        }, this.config.storage.compactionInterval);
+    }
+
+    private async performBackgroundAggregation(): Promise<void> {
+        try {
+            await this.aggregator.performScheduledAggregations();
+        } catch (error) {
+            await this.monitor.logError('backgroundAggregation', error);
+        }
+    }
+
+    private async cleanupOldMetrics(): Promise<void> {
+        try {
+            const threshold = Date.now() - this.config.cleanup.retention;
+            
+            for (const store of this.storage.values()) {
+                await store.deleteOlderThan(threshold);
+            }
+        } catch (error) {
+            await this.monitor.logError('cleanup', error);
+        }
+    }
+
+    private async compactStorage(): Promise<void> {
+        try {
+            for (const store of this.storage.values()) {
+                if (typeof store.compact === 'function') {
+                    await store.compact();
+                }
+            }
+        } catch (error) {
+            await this.monitor.logError('compaction', error);
+        }
+    }
+
+    // Metric Types Management
+    async registerMetricType(type: MetricTypeDefinition): Promise<void> {
+        try {
+            await this.processor.registerType(type);
+            await this.aggregator.registerType(type);
+            for (const store of this.storage.values()) {
+                await store.registerType(type);
+            }
+        } catch (error) {
+            throw new MetricsOperationError('registerMetricType', error);
+        }
+    }
+
+    // Data Export/Import
+    async exportMetrics(
+        criteria: ExportCriteria
+    ): Promise<MetricExport> {
+        try {
+            const metrics = await this.queryMetrics(criteria.query);
+            const formatted = metrics.map(metric => 
+                this.formatter.formatForExport(metric)
+            );
+
+            return {
+                metadata: {
+                    timestamp: Date.now(),
+                    criteria: criteria,
+                    version: this.config.version
+                },
+                metrics: formatted
+            };
+        } catch (error) {
+            throw new MetricsOperationError('exportMetrics', error);
+        }
+    }
+
+    async importMetrics(data: MetricExport): Promise<ImportResult> {
+        try {
+            const metrics = data.metrics.map(metric =>
+                this.formatter.parseFromExport(metric)
+            );
+
+            await this.recordBatch(metrics);
+
+            return {
+                imported: metrics.length,
+                errors: []
+            };
+        } catch (error) {
+            throw new MetricsOperationError('importMetrics', error);
+        }
+    }
+
+    // Health Management
+    async healthCheck(): Promise<MetricsHealth> {
+        try {
+            const storageHealth = await this.checkStorageHealth();
+            const processorHealth = await this.processor.healthCheck();
+            const aggregatorHealth = await this.aggregator.healthCheck();
+
+            return {
+                status: this.determineOverallHealth([
+                    storageHealth,
+                    processorHealth,
+                    aggregatorHealth
+                ]),
+                components: {
+                    storage: storageHealth,
+                    processor: processorHealth,
+                    aggregator: aggregatorHealth
+                },
+                metrics: await this.monitor.getMetrics()
+            };
+        } catch (error) {
+            throw new MetricsOperationError('healthCheck', error);
+        }
+    }
+
+    private async checkStorageHealth(): Promise<ComponentHealth> {
+        const results = new Map<string, boolean>();
+
+        for (const [name, store] of this.storage.entries()) {
+            try {
+                await store.healthCheck();
+                results.set(name, true);
+            } catch (error) {
+                results.set(name, false);
+            }
+        }
+
+        return {
+            status: results.size > 0 && Array.from(results.values()).every(r => r)
+                ? 'healthy'
+                : 'unhealthy',
+            details: Object.fromEntries(results)
+        };
+    }
+
+    private determineOverallHealth(
+        components: ComponentHealth[]
+    ): HealthStatus {
+        return components.every(c => c.status === 'healthy')
+            ? 'healthy'
+            : 'unhealthy';
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        // Stop background tasks
+        this.stopBackgroundTasks();
+
+        // Shutdown components
+        await Promise.all([
+            ...Array.from(this.storage.values()).map(store => store.shutdown()),
+            this.aggregator.shutdown(),
+            this.processor.shutdown(),
+            this.monitor.shutdown()
+        ]);
+    }
+
+    private stopBackgroundTasks(): void {
+        // Implementation to clear all intervals
+    }
+}
+
+// Error Classes
+class MetricsError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'MetricsError';
+    }
+}
+
+class MetricsInitializationError extends MetricsError {
+    constructor(error: any) {
+        super(`Metrics initialization failed: ${error.message}`);
+        this.name = 'MetricsInitializationError';
+    }
+}
+
+class MetricsOperationError extends MetricsError {
+    constructor(operation: string, error: any) {
+        super(`Metrics operation '${operation}' failed: ${error.message}`);
+        this.name = 'MetricsOperationError';
+    }
+}
+
+export {
+    MetricsCollector,
+    MetricsConfig,
+    MetricData,
+    MetricType,
+    AggregationMethod,
+    StorageBackend,
+    MetricExport,
+    ImportResult,
+    MetricsHealth
+};

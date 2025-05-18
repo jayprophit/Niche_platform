@@ -1,0 +1,72 @@
+{
+  "name": "Unified Platform Development",
+  "dockerComposeFile": [
+    "../docker/docker-compose.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": true
+    }
+  },
+  "extensions": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-azuretools.vscode-docker",
+    "ms-kubernetes-tools.vscode-kubernetes-tools",
+    "ms-vscode.vscode-typescript-tslint-plugin",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "mongodb.mongodb-vscode",
+    "graphql.vscode-graphql",
+    "mikestead.dotenv",
+    "redhat.vscode-yaml",
+    "ms-vscode.vscode-node-azure-pack",
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    "streetsidesoftware.code-spell-checker",
+    "visualstudioexptteam.vscodeintellicode",
+    "ms-vscode.test-adapter-converter",
+    "ryanluker.vscode-coverage-gutters"
+  ],
+  "forwardPorts": [
+    3000,   // Frontend
+    5432,   // PostgreSQL
+    27017,  // MongoDB
+    6379,   // Redis
+    5672,   // RabbitMQ
+    15672,  // RabbitMQ Management
+    9090,   // Prometheus
+    3000    // Grafana
+  ],
+  "remoteUser": "node",
+  "features": {
+    "docker-in-docker": {
+      "version": "latest",
+      "moby": true
+    },
+    "kubectl-helm-minikube": {
+      "version": "latest"
+    },
+    "terraform": {
+      "version": "latest"
+    },
+    "azure-cli": {
+      "version": "latest"
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.kube,target=/home/node/.kube,type=bind",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/home/node/.aws,type=bind"
+  ],
+  "containerEnv": {
+    "DOCKER_BUILDKIT": "1"
+  },
+  "postCreateCommand": "npm install",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/workspace/node_modules/.bin"
+  }
+}

@@ -1,0 +1,283 @@
+    private async getRecipients(
+        notification: NotificationData
+    ): Promise<EmailRecipient[]> {
+        // Get recipients from notification configuration
+        const configuredRecipients = notification.recipients?.email || [];
+        
+        // Get recipients based on notification properties
+        const dynamicRecipients = await this.getDynamicRecipients(notification);
+        
+        // Merge and deduplicate recipients
+        const allRecipients = [...configuredRecipients, ...dynamicRecipients];
+        const uniqueRecipients = this.deduplicateRecipients(allRecipients);
+
+        // Validate recipients
+        return this.validateRecipients(uniqueRecipients);
+    }
+
+    private async getDynamicRecipients(
+        notification: NotificationData
+    ): Promise<EmailRecipient[]> {
+        const recipients: EmailRecipient[] = [];
+
+        // Add recipients based on severity
+        if (notification.severity === 'critical') {
+            recipients.push(...this.config.criticalRecipients);
+        }
+
+        // Add recipients based on category
+        const categoryRecipients = this.config.categoryRecipients[notification.category];
+        if (categoryRecipients) {
+            recipients.push(...categoryRecipients);
+        }
+
+        return recipients;
+    }
+
+    private deduplicateRecipients(
+        recipients: EmailRecipient[]
+    ): EmailRecipient[] {
+        return Array.from(
+            new Map(recipients.map(r => [r.email.toLowerCase(), r])).values()
+        );
+    }
+
+    private async validateRecipients(
+        recipients: EmailRecipient[]
+    ): Promise<EmailRecipient[]> {
+        const validRecipients: EmailRecipient[] = [];
+
+        for (const recipient of recipients) {
+            if (this.isValidEmail(recipient.email)) {
+                validRecipients.push(recipient);
+            } else {
+                await this.monitor.logInvalidRecipient(recipient);
+            }
+        }
+
+        return validRecipients;
+    }
+
+    // Email Processing
+    private async processResults(
+        emails: EmailData[],
+        results: SendResult[]
+    ): Promise<void> {
+        for (let i = 0; i < emails.length; i++) {
+            const email = emails[i];
+            const result = results[i];
+
+            if (result.success) {
+                await this.handleSendSuccess(email, result);
+            } else {
+                await this.handleSendFailure(email, result);
+            }
+        }
+    }
+
+    private async handleSendSuccess(
+        email: EmailData,
+        result: SendResult
+    ): Promise<void> {
+        await Promise.all([
+            this.monitor.logEmailSent(email, result),
+            this.updateDeliveryStatus(email, 'sent', result)
+        ]);
+    }
+
+    private async handleSendFailure(
+        email: EmailData,
+        result: SendResult
+    ): Promise<void> {
+        await Promise.all([
+            this.monitor.logEmailFailure(email, result),
+            this.updateDeliveryStatus(email, 'failed', result)
+        ]);
+    }
+
+    private async handleSendError(
+        emails: EmailData[],
+        error: any
+    ): Promise<void> {
+        await Promise.all([
+            this.monitor.logBatchError(emails, error),
+            ...emails.map(email =>
+                this.updateDeliveryStatus(email, 'error', { error })
+            )
+        ]);
+
+        throw error;
+    }
+
+    // Status Management
+    private async updateDeliveryStatus(
+        email: EmailData,
+        status: DeliveryStatus,
+        result: any
+    ): Promise<void> {
+        const delivery = {
+            emailId: email.id,
+            notificationId: email.metadata.notificationId,
+            status,
+            timestamp: Date.now(),
+            attempts: await this.retryManager.getAttemptCount(),
+            result
+        };
+
+        await this.monitor.updateDeliveryStatus(delivery);
+    }
+
+    // Utility Methods
+    private getTemplate(name: string): EmailTemplate {
+        const template = this.templates.get(name);
+        if (!template) {
+            throw new TemplateNotFoundError(name);
+        }
+        return template;
+    }
+
+    private async validateTemplate(template: EmailTemplate): Promise<void> {
+        if (!template.name || !template.render || !template.renderSubject) {
+            throw new ValidationError('Invalid email template configuration');
+        }
+    }
+
+    private async generateTextVersion(html: string): Promise<string> {
+        // Implementation of HTML to text conversion
+        return 'Text version';
+    }
+
+    private isValidEmail(email: string): boolean {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    }
+
+    private generateEmailId(): string {
+        return `mail-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    private groupByTemplate(
+        notifications: NotificationData[]
+    ): Map<string, NotificationData[]> {
+        return notifications.reduce((groups, notification) => {
+            const template = notification.template || 'default';
+            const group = groups.get(template) || [];
+            group.push(notification);
+            groups.set(template, group);
+            return groups;
+        }, new Map<string, NotificationData[]>());
+    }
+
+    // Rate Limiting
+    private async checkRateLimit(count: number): Promise<void> {
+        if (!await this.rateLimit.allowRequest(count)) {
+            throw new RateLimitExceededError(count);
+        }
+    }
+
+    // Monitoring & Health
+    async getChannelStatus(): Promise<ChannelStatus> {
+        try {
+            const [
+                providerStatus,
+                rateLimitStatus,
+                deliveryStats
+            ] = await Promise.all([
+                this.provider.checkStatus(),
+                this.rateLimit.getStatus(),
+                this.monitor.getDeliveryStats()
+            ]);
+
+            return {
+                status: this.determineOverallStatus(providerStatus),
+                provider: providerStatus,
+                rateLimit: rateLimitStatus,
+                metrics: deliveryStats,
+                lastError: await this.monitor.getLastError()
+            };
+        } catch (error) {
+            throw new EmailChannelOperationError('getChannelStatus', error);
+        }
+    }
+
+    private determineOverallStatus(
+        providerStatus: ProviderStatus
+    ): ChannelStatus {
+        return providerStatus.available ? 'operational' : 'degraded';
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        try {
+            await Promise.all([
+                this.provider.shutdown(),
+                this.retryManager.shutdown(),
+                this.rateLimit.shutdown(),
+                this.monitor.shutdown()
+            ]);
+
+            this.templates.clear();
+        } catch (error) {
+            throw new EmailChannelOperationError('shutdown', error);
+        }
+    }
+}
+
+// Error Classes
+class EmailChannelError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'EmailChannelError';
+    }
+}
+
+class EmailChannelInitializationError extends EmailChannelError {
+    constructor(error: any) {
+        super(`Email channel initialization failed: ${error.message}`);
+        this.name = 'EmailChannelInitializationError';
+    }
+}
+
+class EmailChannelOperationError extends EmailChannelError {
+    constructor(operation: string, error: any) {
+        super(`Email channel operation '${operation}' failed: ${error.message}`);
+        this.name = 'EmailChannelOperationError';
+    }
+}
+
+class TemplateNotFoundError extends EmailChannelError {
+    constructor(templateName: string) {
+        super(`Email template not found: ${templateName}`);
+        this.name = 'TemplateNotFoundError';
+    }
+}
+
+class TemplateRenderError extends EmailChannelError {
+    constructor(templateName: string, error: any) {
+        super(`Template render failed for '${templateName}': ${error.message}`);
+        this.name = 'TemplateRenderError';
+    }
+}
+
+class RateLimitExceededError extends EmailChannelError {
+    constructor(count: number) {
+        super(`Rate limit exceeded for ${count} emails`);
+        this.name = 'RateLimitExceededError';
+    }
+}
+
+class ValidationError extends EmailChannelError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
+export {
+    EmailNotificationChannel,
+    EmailConfig,
+    EmailTemplate,
+    EmailProvider,
+    NotificationData,
+    ChannelStatus
+};

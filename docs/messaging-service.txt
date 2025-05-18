@@ -1,0 +1,358 @@
+import { injectable, inject } from 'inversify';
+import { MessagingConfig, MessageOptions, Message, MessagePattern } from './types/messaging';
+
+@injectable()
+export class MessagingService {
+    private brokers: Map<string, MessageBroker>;
+    private channels: Map<string, MessageChannel>;
+    private subscriptions: Map<string, Subscription>;
+    private readonly router: MessageRouter;
+    private readonly monitoring: MessagingMonitoring;
+    private readonly eventBus: EventEmitter;
+
+    constructor(private readonly config: MessagingConfig) {
+        this.brokers = new Map();
+        this.channels = new Map();
+        this.subscriptions = new Map();
+        this.router = new MessageRouter(config.routing);
+        this.monitoring = new MessagingMonitoring(config.monitoring);
+        this.eventBus = new EventEmitter();
+    }
+
+    async initialize(): Promise<void> {
+        try {
+            // Initialize message brokers
+            await this.initializeBrokers();
+            
+            // Initialize channels
+            await this.initializeChannels();
+            
+            // Start monitoring
+            await this.monitoring.start();
+            
+            // Initialize router
+            await this.router.initialize();
+        } catch (error) {
+            throw new MessagingInitializationError(error);
+        }
+    }
+
+    // Publishing Methods
+    async publish<T>(
+        channel: string,
+        message: T,
+        options?: MessageOptions
+    ): Promise<void> {
+        try {
+            const targetChannel = this.getChannel(channel);
+            const enrichedMessage = await this.enrichMessage(message, options);
+            await targetChannel.publish(enrichedMessage);
+            await this.monitoring.logPublish(channel);
+            this.eventBus.emit('message:published', { channel, messageId: enrichedMessage.id });
+        } catch (error) {
+            throw new MessagingOperationError('publish', error);
+        }
+    }
+
+    async publishBatch<T>(
+        channel: string,
+        messages: T[],
+        options?: MessageOptions
+    ): Promise<void> {
+        try {
+            const targetChannel = this.getChannel(channel);
+            const enrichedMessages = await Promise.all(
+                messages.map(msg => this.enrichMessage(msg, options))
+            );
+            await targetChannel.publishBatch(enrichedMessages);
+            await this.monitoring.logBatchPublish(channel, messages.length);
+        } catch (error) {
+            throw new MessagingOperationError('publishBatch', error);
+        }
+    }
+
+    // Subscription Methods
+    async subscribe<T>(
+        channel: string,
+        handler: (message: T) => Promise<void>,
+        options?: SubscriptionOptions
+    ): Promise<Subscription> {
+        try {
+            const targetChannel = this.getChannel(channel);
+            const subscription = await targetChannel.subscribe(
+                async (message: T) => {
+                    try {
+                        await handler(message);
+                        await this.monitoring.logMessageProcessed(channel);
+                    } catch (error) {
+                        await this.handleMessageError(channel, message, error);
+                    }
+                },
+                options
+            );
+
+            this.subscriptions.set(subscription.id, subscription);
+            return subscription;
+        } catch (error) {
+            throw new MessagingOperationError('subscribe', error);
+        }
+    }
+
+    async unsubscribe(subscriptionId: string): Promise<void> {
+        try {
+            const subscription = this.subscriptions.get(subscriptionId);
+            if (!subscription) {
+                throw new SubscriptionNotFoundError(subscriptionId);
+            }
+
+            await subscription.unsubscribe();
+            this.subscriptions.delete(subscriptionId);
+            await this.monitoring.logUnsubscribe(subscription.channel);
+        } catch (error) {
+            throw new MessagingOperationError('unsubscribe', error);
+        }
+    }
+
+    // Request-Response Pattern
+    async request<T, R>(
+        channel: string,
+        message: T,
+        options?: RequestOptions
+    ): Promise<R> {
+        try {
+            const targetChannel = this.getChannel(channel);
+            const enrichedMessage = await this.enrichMessage(message, options);
+            const response = await targetChannel.request(enrichedMessage, options);
+            await this.monitoring.logRequest(channel);
+            return response;
+        } catch (error) {
+            throw new MessagingOperationError('request', error);
+        }
+    }
+
+    async respond<T, R>(
+        channel: string,
+        handler: (message: T) => Promise<R>,
+        options?: ResponseOptions
+    ): Promise<Subscription> {
+        try {
+            const targetChannel = this.getChannel(channel);
+            const subscription = await targetChannel.respond(
+                async (message: T) => {
+                    try {
+                        const response = await handler(message);
+                        await this.monitoring.logResponse(channel);
+                        return response;
+                    } catch (error) {
+                        await this.handleMessageError(channel, message, error);
+                        throw error;
+                    }
+                },
+                options
+            );
+
+            this.subscriptions.set(subscription.id, subscription);
+            return subscription;
+        } catch (error) {
+            throw new MessagingOperationError('respond', error);
+        }
+    }
+
+    // Message Patterns
+    async createPattern<T>(pattern: MessagePattern): Promise<void> {
+        try {
+            await this.router.registerPattern(pattern);
+            this.eventBus.emit('pattern:created', { pattern });
+        } catch (error) {
+            throw new MessagingOperationError('createPattern', error);
+        }
+    }
+
+    // Error Handling
+    private async handleMessageError(
+        channel: string,
+        message: any,
+        error: any
+    ): Promise<void> {
+        await this.monitoring.logError(channel, error);
+        this.eventBus.emit('message:error', {
+            channel,
+            messageId: message.id,
+            error
+        });
+
+        if (this.shouldRetryMessage(message, error)) {
+            await this.retryMessage(channel, message);
+        } else {
+            await this.moveToDeadLetter(channel, message, error);
+        }
+    }
+
+    private shouldRetryMessage(message: any, error: any): boolean {
+        // Implementation of retry decision logic
+        return false;
+    }
+
+    private async retryMessage(channel: string, message: any): Promise<void> {
+        // Implementation of message retry logic
+    }
+
+    private async moveToDeadLetter(
+        channel: string,
+        message: any,
+        error: any
+    ): Promise<void> {
+        // Implementation of dead letter handling
+    }
+
+    // Utility Methods
+    private async enrichMessage<T>(
+        message: T,
+        options?: MessageOptions
+    ): Promise<EnrichedMessage<T>> {
+        return {
+            id: generateMessageId(),
+            timestamp: Date.now(),
+            data: message,
+            metadata: {
+                ...options?.metadata,
+                correlationId: options?.correlationId || generateCorrelationId()
+            }
+        };
+    }
+
+    private getChannel(name: string): MessageChannel {
+        const channel = this.channels.get(name);
+        if (!channel) {
+            throw new ChannelNotFoundError(name);
+        }
+        return channel;
+    }
+
+    private getBroker(name?: string): MessageBroker {
+        const broker = name
+            ? this.brokers.get(name)
+            : this.brokers.get(this.config.defaultBroker);
+
+        if (!broker) {
+            throw new BrokerNotFoundError(name || this.config.defaultBroker);
+        }
+        return broker;
+    }
+
+    // Monitoring & Management
+    async getMetrics(): Promise<MessagingMetrics> {
+        return this.monitoring.getMetrics();
+    }
+
+    async healthCheck(): Promise<MessagingHealth> {
+        const health = {
+            status: 'healthy',
+            brokers: {},
+            channels: {},
+            metrics: await this.monitoring.getMetrics()
+        };
+
+        for (const [name, broker] of this.brokers.entries()) {
+            health.brokers[name] = await broker.healthCheck();
+        }
+
+        for (const [name, channel] of this.channels.entries()) {
+            health.channels[name] = await channel.healthCheck();
+        }
+
+        return health;
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        // Unsubscribe all subscribers
+        const unsubscribes = Array.from(this.subscriptions.values()).map(
+            subscription => subscription.unsubscribe()
+        );
+        await Promise.all(unsubscribes);
+
+        // Stop monitoring
+        await this.monitoring.stop();
+
+        // Close all channels
+        const channelClosures = Array.from(this.channels.values()).map(
+            channel => channel.close()
+        );
+        await Promise.all(channelClosures);
+
+        // Disconnect from brokers
+        const brokerDisconnects = Array.from(this.brokers.values()).map(
+            broker => broker.disconnect()
+        );
+        await Promise.all(brokerDisconnects);
+
+        // Clear maps
+        this.subscriptions.clear();
+        this.channels.clear();
+        this.brokers.clear();
+    }
+}
+
+// Error Classes
+export class MessagingError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'MessagingError';
+    }
+}
+
+export class MessagingInitializationError extends MessagingError {
+    constructor(error: any) {
+        super(`Messaging initialization failed: ${error.message}`);
+        this.name = 'MessagingInitializationError';
+    }
+}
+
+export class MessagingOperationError extends MessagingError {
+    constructor(operation: string, error: any) {
+        super(`Messaging operation '${operation}' failed: ${error.message}`);
+        this.name = 'MessagingOperationError';
+    }
+}
+
+export class ChannelNotFoundError extends MessagingError {
+    constructor(channelName: string) {
+        super(`Channel not found: ${channelName}`);
+        this.name = 'ChannelNotFoundError';
+    }
+}
+
+export class BrokerNotFoundError extends MessagingError {
+    constructor(brokerName: string) {
+        super(`Broker not found: ${brokerName}`);
+        this.name = 'BrokerNotFoundError';
+    }
+}
+
+export class SubscriptionNotFoundError extends MessagingError {
+    constructor(subscriptionId: string) {
+        super(`Subscription not found: ${subscriptionId}`);
+        this.name = 'SubscriptionNotFoundError';
+    }
+}
+
+// Utility Functions
+function generateMessageId(): string {
+    return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function generateCorrelationId(): string {
+    return `corr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export {
+    MessagingService,
+    MessagingConfig,
+    MessageOptions,
+    Message,
+    MessagePattern,
+    Subscription,
+    MessagingMetrics,
+    MessagingHealth
+};

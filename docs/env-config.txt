@@ -1,0 +1,107 @@
+# Core Platform Configuration
+NODE_ENV=development
+PORT=3000
+API_VERSION=v1
+DEBUG_MODE=true
+DEPLOYMENT_MODE=development  # development, staging, production
+
+# Security
+JWT_SECRET=your-jwt-secret
+JWT_EXPIRY=24h
+REFRESH_TOKEN_SECRET=your-refresh-token-secret
+REFRESH_TOKEN_EXPIRY=7d
+MFA_ENABLED=true
+ENCRYPTION_KEY=your-encryption-key
+KMS_KEY_ID=your-kms-key
+CORS_ORIGINS=http://localhost:3000,https://your-domain.com
+CSP_DIRECTIVES=default-src 'self'
+GDPR_ENABLED=true
+KYC_PROVIDER=your-kyc-provider
+
+# Database Configuration
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=platform_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+MONGODB_URI=mongodb://localhost:27017/platform
+REDIS_URL=redis://localhost:6379
+
+# Blockchain Configuration
+ETHEREUM_NODE_URL=http://localhost:8545
+SMART_CONTRACT_ADDRESS=0x...
+CHAIN_ID=1
+GAS_PRICE_STRATEGY=FAST
+IPFS_GATEWAY=https://ipfs.io
+WEB3_PROVIDER=your-web3-provider
+
+# AI Services
+OPENAI_API_KEY=your-openai-key
+ML_MODEL_PATH=/path/to/models
+TENSORFLOW_SERVING_URL=http://localhost:8501
+AI_MODEL_VERSION=latest
+
+# Storage and CDN
+AWS_ACCESS_KEY_ID=your-aws-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret
+AWS_REGION=us-east-1
+S3_BUCKET=your-bucket-name
+CDN_URL=https://your-cdn.cloudfront.net
+
+# Message Queue and Events
+RABBITMQ_URL=amqp://localhost:5672
+KAFKA_BROKERS=localhost:9092
+EVENT_BUS_ENABLED=true
+PUBSUB_TOPIC=platform-events
+
+# Monitoring and Analytics
+SENTRY_DSN=your-sentry-dsn
+NEW_RELIC_LICENSE_KEY=your-new-relic-key
+DATADOG_API_KEY=your-datadog-key
+PROMETHEUS_ENDPOINT=http://localhost:9090
+
+# Email Service
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your-smtp-user
+SMTP_PASSWORD=your-smtp-password
+EMAIL_FROM=noreply@yourplatform.com
+
+# Payment Processing
+STRIPE_SECRET_KEY=your-stripe-secret
+STRIPE_WEBHOOK_SECRET=your-webhook-secret
+COINBASE_API_KEY=your-coinbase-key
+PAYMENT_GATEWAY=stripe  # stripe, coinbase, custom
+
+# Feature Flags and Modules
+ENABLE_MARKETPLACE=true
+ENABLE_SOCIAL_FEATURES=true
+ENABLE_BLOCKCHAIN=true
+ENABLE_ML_FEATURES=true
+ENABLE_METAVERSE=true
+
+# API and Rate Limiting
+RATE_LIMIT_WINDOW=15m
+RATE_LIMIT_MAX_REQUESTS=100
+API_TIMEOUT=30s
+MAX_PAYLOAD_SIZE=10mb
+
+# Cache Configuration
+CACHE_TTL=3600
+CACHE_MAX_SIZE=1000
+CACHE_STRATEGY=distributed  # local, distributed, hybrid
+
+# Logging and Debugging
+LOG_LEVEL=debug
+LOG_FORMAT=json
+LOG_FILE_PATH=/var/log/platform.log
+DEBUG_ENABLED=true
+
+# Development Tools
+ENABLE_SWAGGER=true
+ENABLE_GRAPHQL_PLAYGROUND=true
+DEV_TOOLS_ENABLED=true
+
+# Infrastructure Configuration
+CONTAINER_REGISTRY=your-registry.azurecr.io
+K8S_NAMESPACE=platform

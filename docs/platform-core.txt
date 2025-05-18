@@ -1,0 +1,99 @@
+// /src/core/platform-core.js
+import React from 'react';
+import { LearningPlatform } from '../modules/education/learning-platform';
+import { MarketplacePlatform } from '../modules/marketplace/marketplace-platform';
+import { SocialPlatform } from '../modules/social/social-platform';
+import { JobPlatform } from '../modules/job/job-platform';
+import { BlockchainPlatform } from '../modules/blockchain/blockchain-platform';
+import { SecuritySystem } from '../security/security-system';
+import { UISystem } from '../ui/ui-system';
+
+class PlatformCore {
+  constructor() {
+    this.modules = {
+      learning: new LearningPlatform(),
+      marketplace: new MarketplacePlatform(),
+      social: new SocialPlatform(),
+      jobs: new JobPlatform(),
+      blockchain: new BlockchainPlatform()
+    };
+
+    this.systems = {
+      security: new SecuritySystem(),
+      ui: new UISystem()
+    };
+
+    this.state = {
+      initialized: false,
+      activeModule: null,
+      user: null
+    };
+  }
+
+  async initialize() {
+    try {
+      await Promise.all([
+        this.initializeModules(),
+        this.initializeSystems(),
+        this.setupIntegrations()
+      ]);
+      this.state.initialized = true;
+      return true;
+    } catch (error) {
+      console.error('Platform initialization failed:', error);
+      return false;
+    }
+  }
+
+  async initializeModules() {
+    for (const [name, module] of Object.entries(this.modules)) {
+      await module.initialize();
+    }
+  }
+
+  async initializeSystems() {
+    for (const [name, system] of Object.entries(this.systems)) {
+      await system.initialize();
+    }
+  }
+
+  async setupIntegrations() {
+    // Setup cross-module communication
+    for (const module of Object.values(this.modules)) {
+      module.setCore(this);
+    }
+
+    // Setup system integrations
+    this.systems.security.protect(this.modules);
+    this.systems.ui.connect(this.modules);
+  }
+
+  async loadModule(moduleName) {
+    if (!this.modules[moduleName]) {
+      throw new Error(`Module ${moduleName} not found`);
+    }
+    this.state.activeModule = moduleName;
+    return this.modules[moduleName];
+  }
+
+  async authenticateUser(credentials) {
+    const user = await this.systems.security.authenticate(credentials);
+    if (user) {
+      this.state.user = user;
+      return user;
+    }
+    return null;
+  }
+
+  getActiveModule() {
+    return this.state.activeModule 
+      ? this.modules[this.state.activeModule]
+      : null;
+  }
+
+  getCurrentUser() {
+    return this.state.user;
+  }
+}
+
+export default PlatformCore;

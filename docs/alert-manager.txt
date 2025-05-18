@@ -1,0 +1,300 @@
+    private getChannelsForAlerts(
+        alerts: AlertNotification[]
+    ): NotificationChannel[] {
+        const severity = this.getHighestSeverity(alerts);
+        const channels: NotificationChannel[] = [];
+
+        // Get channels based on severity routing
+        const routingConfig = this.config.routing[severity];
+        if (routingConfig) {
+            for (const channelName of routingConfig.channels) {
+                const channel = this.channels.get(channelName);
+                if (channel) {
+                    channels.push(channel);
+                }
+            }
+        }
+
+        return channels;
+    }
+
+    private getHighestSeverity(alerts: AlertNotification[]): Severity {
+        const severityOrder: Severity[] = ['critical', 'high', 'medium', 'low'];
+        let highestIndex = severityOrder.length - 1;
+
+        for (const alert of alerts) {
+            const index = severityOrder.indexOf(alert.severity);
+            if (index < highestIndex) {
+                highestIndex = index;
+            }
+        }
+
+        return severityOrder[highestIndex];
+    }
+
+    // Alert Recovery
+    async processRecovery<T>(event: T): Promise<void> {
+        try {
+            const recoveredAlerts = await this.findRecoverableAlerts(event);
+            if (recoveredAlerts.length > 0) {
+                await this.handleRecovery(recoveredAlerts, event);
+            }
+        } catch (error) {
+            throw new AlertManagerOperationError('processRecovery', error);
+        }
+    }
+
+    private async findRecoverableAlerts<T>(event: T): Promise<AlertNotification[]> {
+        const activeAlerts = await this.history.getActiveAlerts();
+        const recoverable: AlertNotification[] = [];
+
+        for (const alert of activeAlerts) {
+            const rule = this.getRule(alert.ruleId);
+            if (rule.recovery && await rule.recovery(event)) {
+                recoverable.push(alert);
+            }
+        }
+
+        return recoverable;
+    }
+
+    private async handleRecovery(
+        alerts: AlertNotification[],
+        recoveryEvent: any
+    ): Promise<void> {
+        // Create recovery notifications
+        const recoveryAlerts = alerts.map(alert => ({
+            ...alert,
+            id: this.generateAlertId(),
+            status: 'recovered',
+            recoveryTimestamp: Date.now(),
+            recoveryData: recoveryEvent
+        }));
+
+        // Process recovery notifications
+        await this.processAlerts(recoveryAlerts);
+
+        // Update original alerts
+        await this.updateAlertStatus(alerts, 'recovered');
+    }
+
+    // Alert Status Management
+    private async updateAlertStatus(
+        alerts: AlertNotification[],
+        status: AlertStatus
+    ): Promise<void> {
+        for (const alert of alerts) {
+            alert.status = status;
+            alert.statusTimestamp = Date.now();
+            await this.history.updateAlert(alert);
+        }
+    }
+
+    // Alert Lifecycle Management
+    async acknowledgeAlerts(
+        alertIds: string[],
+        acknowledgement: AlertAcknowledgement
+    ): Promise<void> {
+        try {
+            const alerts = await this.history.getAlerts(alertIds);
+            const acknowledgedAlerts = alerts.map(alert => ({
+                ...alert,
+                status: 'acknowledged',
+                statusTimestamp: Date.now(),
+                acknowledgement
+            }));
+
+            await Promise.all([
+                this.updateAlertStatus(acknowledgedAlerts, 'acknowledged'),
+                this.reporter.logAlertsAcknowledged(alertIds, acknowledgement)
+            ]);
+        } catch (error) {
+            throw new AlertManagerOperationError('acknowledgeAlerts', error);
+        }
+    }
+
+    async silenceAlerts(
+        criteria: AlertSilenceCriteria,
+        duration: number
+    ): Promise<string> {
+        try {
+            const silenceId = await this.silencer.silence(criteria, duration);
+            await this.reporter.logAlertsSilenced(criteria, duration);
+            return silenceId;
+        } catch (error) {
+            throw new AlertManagerOperationError('silenceAlerts', error);
+        }
+    }
+
+    async removeSilence(silenceId: string): Promise<void> {
+        try {
+            await this.silencer.removeSilence(silenceId);
+            await this.reporter.logSilenceRemoved(silenceId);
+        } catch (error) {
+            throw new AlertManagerOperationError('removeSilence', error);
+        }
+    }
+
+    // Alert Query and Analysis
+    async getAlerts(criteria: AlertQueryCriteria): Promise<AlertNotification[]> {
+        try {
+            return this.history.queryAlerts(criteria);
+        } catch (error) {
+            throw new AlertManagerOperationError('getAlerts', error);
+        }
+    }
+
+    async getActiveAlerts(): Promise<AlertNotification[]> {
+        try {
+            return this.history.getActiveAlerts();
+        } catch (error) {
+            throw new AlertManagerOperationError('getActiveAlerts', error);
+        }
+    }
+
+    async analyzeAlertTrends(
+        options?: TrendAnalysisOptions
+    ): Promise<AlertTrends> {
+        try {
+            const alerts = await this.history.getAlerts({
+                timeRange: options?.timeRange
+            });
+
+            return {
+                totalAlerts: alerts.length,
+                bySeverity: this.groupBySeverity(alerts),
+                byRule: this.groupByRule(alerts),
+                byStatus: this.groupByStatus(alerts),
+                trends: await this.calculateTrends(alerts, options)
+            };
+        } catch (error) {
+            throw new AlertManagerOperationError('analyzeAlertTrends', error);
+        }
+    }
+
+    // Utility Methods
+    private generateAlertId(): string {
+        return `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    private getRule(ruleId: string): AlertRule {
+        const rule = this.rules.get(ruleId);
+        if (!rule) {
+            throw new RuleNotFoundError(ruleId);
+        }
+        return rule;
+    }
+
+    private async validateRule(rule: AlertRule): Promise<void> {
+        if (!rule.id || !rule.condition || !rule.severity) {
+            throw new ValidationError('Invalid alert rule configuration');
+        }
+    }
+
+    private groupBySeverity(
+        alerts: AlertNotification[]
+    ): Record<Severity, number> {
+        return alerts.reduce((acc, alert) => {
+            acc[alert.severity] = (acc[alert.severity] || 0) + 1;
+            return acc;
+        }, {} as Record<Severity, number>);
+    }
+
+    private groupByRule(
+        alerts: AlertNotification[]
+    ): Record<string, number> {
+        return alerts.reduce((acc, alert) => {
+            acc[alert.ruleId] = (acc[alert.ruleId] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+    }
+
+    private groupByStatus(
+        alerts: AlertNotification[]
+    ): Record<AlertStatus, number> {
+        return alerts.reduce((acc, alert) => {
+            acc[alert.status] = (acc[alert.status] || 0) + 1;
+            return acc;
+        }, {} as Record<AlertStatus, number>);
+    }
+
+    private async calculateTrends(
+        alerts: AlertNotification[],
+        options?: TrendAnalysisOptions
+    ): Promise<AlertTrendData> {
+        // Implementation of trend calculation
+        return {} as AlertTrendData;
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        try {
+            // Cleanup notification channels
+            await Promise.all(
+                Array.from(this.channels.values()).map(channel => 
+                    channel.shutdown()
+                )
+            );
+
+            // Cleanup components
+            await Promise.all([
+                this.history.cleanup(),
+                this.aggregator.shutdown(),
+                this.silencer.shutdown(),
+                this.reporter.shutdown()
+            ]);
+
+            // Clear internal state
+            this.rules.clear();
+            this.channels.clear();
+        } catch (error) {
+            throw new AlertManagerOperationError('shutdown', error);
+        }
+    }
+}
+
+// Error Classes
+class AlertManagerError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'AlertManagerError';
+    }
+}
+
+class AlertManagerInitializationError extends AlertManagerError {
+    constructor(error: any) {
+        super(`Alert manager initialization failed: ${error.message}`);
+        this.name = 'AlertManagerInitializationError';
+    }
+}
+
+class AlertManagerOperationError extends AlertManagerError {
+    constructor(operation: string, error: any) {
+        super(`Alert manager operation '${operation}' failed: ${error.message}`);
+        this.name = 'AlertManagerOperationError';
+    }
+}
+
+class RuleNotFoundError extends AlertManagerError {
+    constructor(ruleId: string) {
+        super(`Alert rule not found: ${ruleId}`);
+        this.name = 'RuleNotFoundError';
+    }
+}
+
+class ValidationError extends AlertManagerError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
+export {
+    AlertManager,
+    AlertConfig,
+    AlertRule,
+    AlertNotification,
+    AlertTrends,
+    AlertStatus,
+    Severity
+};

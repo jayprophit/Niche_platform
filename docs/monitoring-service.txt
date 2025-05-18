@@ -1,0 +1,303 @@
+    // Analytics
+    async trackEvent(
+        eventName: string,
+        properties?: Record<string, any>
+    ): Promise<void> {
+        try {
+            await this.analytics.trackEvent(eventName, properties);
+            this.eventBus.emit('analytics:event', { eventName, properties });
+        } catch (error) {
+            throw new MonitoringOperationError('trackEvent', error);
+        }
+    }
+
+    async trackMetric(
+        name: string,
+        value: number,
+        dimensions?: Record<string, string>
+    ): Promise<void> {
+        try {
+            await this.analytics.trackMetric(name, value, dimensions);
+            this.eventBus.emit('analytics:metric', { name, value, dimensions });
+        } catch (error) {
+            throw new MonitoringOperationError('trackMetric', error);
+        }
+    }
+
+    async generateReport(
+        criteria: ReportCriteria
+    ): Promise<MonitoringReport> {
+        try {
+            const metrics = await this.metrics.getMetrics(criteria.timeRange);
+            const healthChecks = await this.health.getChecks(criteria.timeRange);
+            const alerts = await this.alerts.getAlerts(criteria.timeRange);
+            const traces = await this.tracing.getTraces(criteria.timeRange);
+            const analytics = await this.analytics.getAnalytics(criteria.timeRange);
+
+            return {
+                timestamp: Date.now(),
+                criteria,
+                metrics,
+                healthChecks,
+                alerts,
+                traces,
+                analytics
+            };
+        } catch (error) {
+            throw new MonitoringOperationError('generateReport', error);
+        }
+    }
+
+    // Performance Monitoring
+    async startPerfMeasurement(
+        name: string,
+        tags?: Record<string, string>
+    ): Promise<PerfMeasurement> {
+        const measurement: PerfMeasurement = {
+            id: this.generateMeasurementId(),
+            name,
+            tags,
+            startTime: process.hrtime(),
+            startTimestamp: Date.now()
+        };
+
+        return measurement;
+    }
+
+    async endPerfMeasurement(measurement: PerfMeasurement): Promise<void> {
+        const duration = process.hrtime(measurement.startTime);
+        const durationMs = (duration[0] * 1000) + (duration[1] / 1000000);
+
+        await this.recordHistogram(
+            `performance.${measurement.name}`,
+            durationMs,
+            measurement.tags
+        );
+
+        this.eventBus.emit('performance:measured', {
+            ...measurement,
+            duration: durationMs
+        });
+    }
+
+    // System Health Management
+    async getSystemHealth(): Promise<SystemHealth> {
+        try {
+            const [
+                metricsHealth,
+                checksHealth,
+                alertsHealth,
+                tracingHealth,
+                analyticsHealth
+            ] = await Promise.all([
+                this.metrics.healthCheck(),
+                this.health.healthCheck(),
+                this.alerts.healthCheck(),
+                this.tracing.healthCheck(),
+                this.analytics.healthCheck()
+            ]);
+
+            return {
+                status: this.aggregateHealthStatus([
+                    metricsHealth,
+                    checksHealth,
+                    alertsHealth,
+                    tracingHealth,
+                    analyticsHealth
+                ]),
+                components: {
+                    metrics: metricsHealth,
+                    healthChecks: checksHealth,
+                    alerts: alertsHealth,
+                    tracing: tracingHealth,
+                    analytics: analyticsHealth
+                },
+                timestamp: Date.now()
+            };
+        } catch (error) {
+            throw new MonitoringOperationError('getSystemHealth', error);
+        }
+    }
+
+    private aggregateHealthStatus(statuses: HealthStatus[]): HealthStatus {
+        if (statuses.some(status => status === 'error')) {
+            return 'error';
+        }
+        if (statuses.some(status => status === 'warning')) {
+            return 'warning';
+        }
+        return 'healthy';
+    }
+
+    // Resource Usage Monitoring
+    async monitorResources(): Promise<ResourceMetrics> {
+        try {
+            const cpu = await this.getCPUMetrics();
+            const memory = await this.getMemoryMetrics();
+            const disk = await this.getDiskMetrics();
+            const network = await this.getNetworkMetrics();
+
+            return {
+                timestamp: Date.now(),
+                cpu,
+                memory,
+                disk,
+                network
+            };
+        } catch (error) {
+            throw new MonitoringOperationError('monitorResources', error);
+        }
+    }
+
+    private async getCPUMetrics(): Promise<CPUMetrics> {
+        // Implementation of CPU metrics collection
+        return {
+            usage: 0,
+            load: [0, 0, 0]
+        };
+    }
+
+    private async getMemoryMetrics(): Promise<MemoryMetrics> {
+        // Implementation of memory metrics collection
+        return {
+            total: 0,
+            used: 0,
+            free: 0
+        };
+    }
+
+    private async getDiskMetrics(): Promise<DiskMetrics> {
+        // Implementation of disk metrics collection
+        return {
+            total: 0,
+            used: 0,
+            free: 0
+        };
+    }
+
+    private async getNetworkMetrics(): Promise<NetworkMetrics> {
+        // Implementation of network metrics collection
+        return {
+            bytesIn: 0,
+            bytesOut: 0,
+            packetsIn: 0,
+            packetsOut: 0
+        };
+    }
+
+    // Utility Methods
+    private startCollectionIntervals(): void {
+        // Set up periodic collection of metrics
+        setInterval(() => {
+            this.collectSystemMetrics();
+        }, this.config.metrics.collectionInterval);
+
+        // Set up periodic health checks
+        setInterval(() => {
+            this.performHealthCheck();
+        }, this.config.health.checkInterval);
+
+        // Set up periodic resource monitoring
+        setInterval(() => {
+            this.monitorResources();
+        }, this.config.resources.monitorInterval);
+    }
+
+    private async collectSystemMetrics(): Promise<void> {
+        try {
+            const resources = await this.monitorResources();
+            await this.recordMetric('system.cpu.usage', resources.cpu.usage);
+            await this.recordMetric('system.memory.used', resources.memory.used);
+            await this.recordMetric('system.disk.used', resources.disk.used);
+            await this.recordMetric('system.network.bytesIn', resources.network.bytesIn);
+        } catch (error) {
+            throw new MonitoringOperationError('collectSystemMetrics', error);
+        }
+    }
+
+    private generateMeasurementId(): string {
+        return `meas-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        try {
+            await Promise.all([
+                this.metrics.shutdown(),
+                this.health.shutdown(),
+                this.alerts.shutdown(),
+                this.tracing.shutdown(),
+                this.analytics.shutdown()
+            ]);
+        } catch (error) {
+            throw new MonitoringOperationError('shutdown', error);
+        }
+    }
+}
+
+// Error Classes
+class MonitoringError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'MonitoringError';
+    }
+}
+
+class MonitoringInitializationError extends MonitoringError {
+    constructor(error: any) {
+        super(`Monitoring initialization failed: ${error.message}`);
+        this.name = 'MonitoringInitializationError';
+    }
+}
+
+class MonitoringOperationError extends MonitoringError {
+    constructor(operation: string, error: any) {
+        super(`Monitoring operation '${operation}' failed: ${error.message}`);
+        this.name = 'MonitoringOperationError';
+    }
+}
+
+// Types
+interface MonitoringReport {
+    timestamp: number;
+    criteria: ReportCriteria;
+    metrics: any[];
+    healthChecks: any[];
+    alerts: any[];
+    traces: any[];
+    analytics: any[];
+}
+
+interface PerfMeasurement {
+    id: string;
+    name: string;
+    tags?: Record<string, string>;
+    startTime: [number, number];
+    startTimestamp: number;
+}
+
+interface SystemHealth {
+    status: HealthStatus;
+    components: Record<string, HealthStatus>;
+    timestamp: number;
+}
+
+interface ResourceMetrics {
+    timestamp: number;
+    cpu: CPUMetrics;
+    memory: MemoryMetrics;
+    disk: DiskMetrics;
+    network: NetworkMetrics;
+}
+
+export {
+    MonitoringService,
+    MonitoringConfig,
+    MetricData,
+    HealthCheck,
+    AlertConfig,
+    AlertRule,
+    MonitoringReport,
+    SystemHealth,
+    ResourceMetrics
+};

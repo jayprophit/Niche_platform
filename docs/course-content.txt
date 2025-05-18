@@ -1,0 +1,164 @@
+const courseLibrary = {
+  // Technical Courses
+  technical: [
+    {
+      id: "tech-001",
+      title: "Full Stack Web Development",
+      category: "Programming",
+      level: "Intermediate",
+      duration: "120 hours",
+      modules: [
+        {
+          title: "Frontend Development",
+          lessons: [
+            {
+              title: "Modern HTML5 & CSS3",
+              content: {
+                video: "frontend/html-css.mp4",
+                duration: "45 minutes",
+                materials: [
+                  { type: "pdf", name: "HTML5-CSS3-Guide.pdf" },
+                  { type: "code", name: "practice-exercises.zip" }
+                ],
+                practice: [
+                  { type: "exercise", name: "Build a Responsive Layout" },
+                  { type: "quiz", name: "HTML5 Features Assessment" }
+                ]
+              }
+            },
+            {
+              title: "JavaScript Essentials",
+              content: {
+                video: "frontend/javascript.mp4",
+                materials: [
+                  { type: "pdf", name: "JS-Fundamentals.pdf" },
+                  { type: "code", name: "js-exercises.zip" }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      price: 199.99,
+      certification: true
+    }
+  ],
+
+  // Digital Marketing Courses
+  marketing: [
+    {
+      id: "mkt-001",
+      title: "Digital Marketing Mastery",
+      category: "Marketing",
+      level: "Beginner",
+      duration: "80 hours",
+      modules: [
+        {
+          title: "Social Media Marketing",
+          lessons: [
+            {
+              title: "Social Media Strategy",
+              content: {
+                video: "marketing/social-strategy.mp4",
+                materials: [
+                  { type: "pdf", name: "Social-Media-Playbook.pdf" },
+                  { type: "template", name: "Strategy-Template.xlsx" }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      price: 149.99
+    }
+  ],
+
+  // Design Courses
+  design: [
+    {
+      id: "des-001",
+      title: "UI/UX Design Professional",
+      category: "Design",
+      level: "Advanced",
+      duration: "100 hours",
+      modules: [
+        {
+          title: "User Interface Design",
+          lessons: [
+            {
+              title: "Design Principles",
+              content: {
+                video: "design/ui-principles.mp4",
+                materials: [
+                  { type: "pdf", name: "Design-Guidelines.pdf" },
+                  { type: "resource", name: "UI-Kit.sketch" }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      price: 299.99
+    }
+  ]
+};
+
+const digitalProducts = {
+  // Software & Tools
+  software: [
+    {
+      id: "sw-001",
+      title: "Developer Toolkit Pro",
+      category: "Development Tools",
+      description: "Complete developer toolkit with code snippets, templates, and utilities",
+      features: [
+        "200+ Code Templates",
+        "50+ UI Components",
+        "Custom Snippet Manager",
+        "Dev Environment Setup Scripts"
+      ],
+      formats: ["ZIP", "GitHub Repo"],
+      price: 79.99,
+      license: "Lifetime",
+      requirements: "VS Code 1.60+"
+    }
+  ],
+
+  // Digital Assets
+  assets: [
+    {
+      id: "ast-001",
+      title: "Professional UI Kit",
+      category: "Design Assets",
+      description: "Comprehensive UI kit for web and mobile applications",
+      includes: [
+        "500+ UI Components",
+        "200+ Icons",
+        "100+ Page Templates",
+        "Design System Guide"
+      ],
+      formats: ["Figma", "Sketch", "Adobe XD"],
+      price: 59.99
+    }
+  ],
+
+  // Templates
+  templates: [
+    {
+      id: "tmp-001",
+      title: "E-commerce Starter Kit",
+      category: "Website Templates",
+      description: "Complete e-commerce website template with admin dashboard",
+      features: [
+        "Responsive Design",
+        "Shopping Cart",
+        "Payment Integration",
+        "Inventory Management"
+      ],
+      formats: ["HTML/CSS/JS", "React", "Vue"],
+      price: 129.99
+    }
+  ]
+};
+
+export { courseLibrary, digitalProducts };

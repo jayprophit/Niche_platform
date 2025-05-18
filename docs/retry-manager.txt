@@ -1,0 +1,214 @@
+import { injectable, inject } from 'inversify';
+import { 
+    RetryConfig,
+    RetryStrategy,
+    BackoffStrategy,
+    RetryResult,
+    RetryContext
+} from './types/retry';
+
+@injectable()
+export class RetryManager {
+    private readonly history: Map<string, RetryHistory>;
+    private readonly strategies: Map<string, RetryStrategy>;
+    private readonly monitor: RetryMonitor;
+
+    constructor(private readonly config: RetryConfig) {
+        this.history = new Map();
+        this.strategies = new Map();
+        this.monitor = new RetryMonitor(config.monitoring);
+        this.initializeStrategies();
+    }
+
+    private initializeStrategies(): void {
+        // Register default strategies
+        this.strategies.set('exponential', new ExponentialBackoffStrategy());
+        this.strategies.set('linear', new LinearBackoffStrategy());
+        this.strategies.set('fixed', new FixedIntervalStrategy());
+        this.strategies.set('fibonacci', new FibonacciBackoffStrategy());
+        this.strategies.set('random', new RandomBackoffStrategy());
+    }
+
+    async initialize(): Promise<void> {
+        try {
+            await this.monitor.initialize();
+            await this.loadRetryHistory();
+        } catch (error) {
+            throw new RetryManagerInitializationError(error);
+        }
+    }
+
+    // Retry Execution
+    async execute<T>(
+        operation: () => Promise<T>,
+        context?: RetryContext
+    ): Promise<T> {
+        const retryId = this.generateRetryId();
+        const retryContext = this.createRetryContext(retryId, context);
+
+        try {
+            return await this.executeWithRetries(operation, retryContext);
+        } finally {
+            await this.cleanupRetry(retryId);
+        }
+    }
+
+    private async executeWithRetries<T>(
+        operation: () => Promise<T>,
+        context: RetryContext
+    ): Promise<T> {
+        let lastError: Error;
+        const strategy = this.getStrategy(context.strategy);
+
+        for (let attempt = 1; attempt <= context.maxAttempts; attempt++) {
+            try {
+                const result = await this.attemptOperation(operation, attempt, context);
+                await this.recordSuccess(context.id, attempt);
+                return result;
+            } catch (error) {
+                lastError = error;
+                await this.handleFailure(context, attempt, error);
+
+                if (!this.shouldRetry(error, attempt, context)) {
+                    break;
+                }
+
+                await this.delay(strategy.getDelay(attempt, context));
+            }
+        }
+
+        throw this.createFinalError(lastError!, context);
+    }
+
+    private async attemptOperation<T>(
+        operation: () => Promise<T>,
+        attempt: number,
+        context: RetryContext
+    ): Promise<T> {
+        const startTime = process.hrtime();
+
+        try {
+            const result = await operation();
+            const duration = this.calculateDuration(startTime);
+
+            await this.monitor.logSuccess({
+                id: context.id,
+                attempt,
+                duration,
+                timestamp: Date.now()
+            });
+
+            return result;
+        } catch (error) {
+            const duration = this.calculateDuration(startTime);
+
+            await this.monitor.logFailure({
+                id: context.id,
+                attempt,
+                duration,
+                error,
+                timestamp: Date.now()
+            });
+
+            throw error;
+        }
+    }
+
+    // Retry Decision Making
+    private shouldRetry(
+        error: Error,
+        attempt: number,
+        context: RetryContext
+    ): boolean {
+        if (attempt >= context.maxAttempts) {
+            return false;
+        }
+
+        if (context.retryableErrors && !this.isRetryableError(error, context.retryableErrors)) {
+            return false;
+        }
+
+        if (context.nonRetryableErrors && this.isNonRetryableError(error, context.nonRetryableErrors)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private isRetryableError(error: Error, retryableErrors: any[]): boolean {
+        return retryableErrors.some(errorType =>
+            error instanceof errorType ||
+            (typeof errorType === 'string' && error.name === errorType)
+        );
+    }
+
+    private isNonRetryableError(error: Error, nonRetryableErrors: any[]): boolean {
+        return nonRetryableErrors.some(errorType =>
+            error instanceof errorType ||
+            (typeof errorType === 'string' && error.name === errorType)
+        );
+    }
+
+    // Retry Status Management
+    private async handleFailure(
+        context: RetryContext,
+        attempt: number,
+        error: Error
+    ): Promise<void> {
+        await this.recordFailure(context.id, attempt, error);
+
+        if (context.onFailure) {
+            try {
+                await context.onFailure(error, attempt, context);
+            } catch (handlerError) {
+                await this.monitor.logFailureHandlerError(context.id, handlerError);
+            }
+        }
+    }
+
+    private async recordSuccess(
+        retryId: string,
+        attempt: number
+    ): Promise<void> {
+        const history = this.getRetryHistory(retryId);
+        history.attempts.push({
+            attempt,
+            timestamp: Date.now(),
+            success: true
+        });
+        await this.saveRetryHistory(retryId, history);
+    }
+
+    private async recordFailure(
+        retryId: string,
+        attempt: number,
+        error: Error
+    ): Promise<void> {
+        const history = this.getRetryHistory(retryId);
+        history.attempts.push({
+            attempt,
+            timestamp: Date.now(),
+            success: false,
+            error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            }
+        });
+        await this.saveRetryHistory(retryId, history);
+    }
+
+    // History Management
+    private async loadRetryHistory(): Promise<void> {
+        // Implementation of history loading from persistent storage
+    }
+
+    private async saveRetryHistory(
+        retryId: string,
+        history: RetryHistory
+    ): Promise<void> {
+        this.history.set(retryId, history);
+        await this.monitor.updateHistory(retryId, history);
+    }
+
+    

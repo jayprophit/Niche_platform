@@ -1,0 +1,263 @@
+    private calculateDuration(startTime: [number, number]): number {
+        const [seconds, nanoseconds] = process.hrtime(startTime);
+        return seconds * 1000 + nanoseconds / 1000000; // Convert to milliseconds
+    }
+
+    private aggregateResults(
+        results: Map<string, CheckStatus>
+    ): HealthResult {
+        const aggregated: HealthResult = {
+            status: 'healthy',
+            timestamp: Date.now(),
+            checks: Object.fromEntries(results),
+            meta: {
+                totalChecks: results.size,
+                healthyChecks: 0,
+                warningChecks: 0,
+                errorChecks: 0,
+                duration: 0
+            }
+        };
+
+        // Calculate statistics
+        for (const status of results.values()) {
+            switch (status.status) {
+                case 'healthy':
+                    aggregated.meta.healthyChecks++;
+                    break;
+                case 'warning':
+                    aggregated.meta.warningChecks++;
+                    aggregated.status = 'warning';
+                    break;
+                case 'error':
+                    aggregated.meta.errorChecks++;
+                    aggregated.status = 'error';
+                    break;
+            }
+            aggregated.meta.duration += status.duration || 0;
+        }
+
+        return aggregated;
+    }
+
+    // Scheduling
+    private startScheduler(): void {
+        // Schedule regular health checks
+        setInterval(() => {
+            this.runScheduledChecks();
+        }, this.config.checkInterval);
+
+        // Schedule status reporting
+        setInterval(() => {
+            this.generateStatusReport();
+        }, this.config.reportInterval);
+    }
+
+    private async runScheduledChecks(): Promise<void> {
+        try {
+            const result = await this.performHealthCheck(undefined, {
+                scheduler: true
+            });
+            await this.processScheduledResult(result);
+        } catch (error) {
+            await this.reporting.logError('scheduledCheck', error);
+        }
+    }
+
+    private async processScheduledResult(result: HealthResult): Promise<void> {
+        // Update history
+        await this.history.recordResult(result);
+
+        // Check for status changes
+        await this.detectStatusChanges(result);
+
+        // Generate report if needed
+        if (this.shouldGenerateReport(result)) {
+            await this.generateStatusReport();
+        }
+    }
+
+    private async detectStatusChanges(result: HealthResult): Promise<void> {
+        const previousResult = await this.history.getLastResult();
+        if (!previousResult) return;
+
+        for (const [checkId, status] of Object.entries(result.checks)) {
+            const previousStatus = previousResult.checks[checkId];
+            if (previousStatus && previousStatus.status !== status.status) {
+                await this.handleStatusChange(checkId, previousStatus, status);
+            }
+        }
+    }
+
+    private async handleStatusChange(
+        checkId: string,
+        previousStatus: CheckStatus,
+        currentStatus: CheckStatus
+    ): Promise<void> {
+        // Log status change
+        await this.reporting.logStatusChange(
+            checkId,
+            previousStatus.status,
+            currentStatus.status
+        );
+
+        // Trigger alerts if needed
+        if (this.shouldAlertOnChange(previousStatus.status, currentStatus.status)) {
+            await this.alerts.sendStatusChangeAlert(
+                checkId,
+                previousStatus,
+                currentStatus
+            );
+        }
+    }
+
+    private shouldAlertOnChange(
+        previousStatus: string,
+        currentStatus: string
+    ): boolean {
+        // Alert on degradation or recovery
+        return (
+            (previousStatus === 'healthy' && currentStatus !== 'healthy') ||
+            (previousStatus !== 'healthy' && currentStatus === 'healthy')
+        );
+    }
+
+    // Reporting
+    async generateStatusReport(): Promise<HealthReport> {
+        try {
+            const currentStatus = await this.performHealthCheck();
+            const historicalData = await this.history.getHistory({
+                duration: this.config.reportDuration
+            });
+
+            const report = await this.reporting.generateReport({
+                currentStatus,
+                historicalData,
+                meta: {
+                    generatedAt: Date.now(),
+                    timespan: this.config.reportDuration,
+                    version: this.config.version
+                }
+            });
+
+            await this.reporting.distributeReport(report);
+            return report;
+        } catch (error) {
+            throw new HealthMonitorOperationError('generateStatusReport', error);
+        }
+    }
+
+    private shouldGenerateReport(result: HealthResult): boolean {
+        return (
+            result.status !== 'healthy' ||
+            result.meta.errorChecks > 0 ||
+            result.meta.warningChecks > 0
+        );
+    }
+
+    // History Management
+    async getCheckHistory(
+        checkId: string,
+        options?: HistoryOptions
+    ): Promise<HealthHistory> {
+        try {
+            return await this.history.getCheckHistory(checkId, options);
+        } catch (error) {
+            throw new HealthMonitorOperationError('getCheckHistory', error);
+        }
+    }
+
+    async clearHistory(
+        checkId?: string,
+        options?: HistoryOptions
+    ): Promise<void> {
+        try {
+            await this.history.clearHistory(checkId, options);
+        } catch (error) {
+            throw new HealthMonitorOperationError('clearHistory', error);
+        }
+    }
+
+    // Analytics
+    async analyzeHealthTrends(
+        options?: TrendAnalysisOptions
+    ): Promise<HealthTrends> {
+        try {
+            const historicalData = await this.history.getHistory(options);
+            return this.reporting.analyzeTrends(historicalData);
+        } catch (error) {
+            throw new HealthMonitorOperationError('analyzeHealthTrends', error);
+        }
+    }
+
+    // Cleanup
+    async shutdown(): Promise<void> {
+        try {
+            // Stop schedulers
+            this.stopSchedulers();
+
+            // Cleanup components
+            await Promise.all([
+                this.history.cleanup(),
+                this.alerts.shutdown(),
+                this.reporting.shutdown()
+            ]);
+
+            // Clear internal state
+            this.checks.clear();
+            this.dependencies.clear();
+        } catch (error) {
+            throw new HealthMonitorOperationError('shutdown', error);
+        }
+    }
+
+    private stopSchedulers(): void {
+        // Implementation to clear all intervals
+    }
+}
+
+// Error Classes
+class HealthMonitorError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'HealthMonitorError';
+    }
+}
+
+class HealthMonitorInitializationError extends HealthMonitorError {
+    constructor(error: any) {
+        super(`Health monitor initialization failed: ${error.message}`);
+        this.name = 'HealthMonitorInitializationError';
+    }
+}
+
+class HealthMonitorOperationError extends HealthMonitorError {
+    constructor(operation: string, error: any) {
+        super(`Health monitor operation '${operation}' failed: ${error.message}`);
+        this.name = 'HealthMonitorOperationError';
+    }
+}
+
+class CheckNotFoundError extends HealthMonitorError {
+    constructor(checkId: string) {
+        super(`Health check not found: ${checkId}`);
+        this.name = 'CheckNotFoundError';
+    }
+}
+
+class ValidationError extends HealthMonitorError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
+export {
+    HealthMonitor,
+    HealthConfig,
+    HealthCheck,
+    HealthResult,
+    CheckStatus,
+    HealthReport,
+    HealthTrends
+};
